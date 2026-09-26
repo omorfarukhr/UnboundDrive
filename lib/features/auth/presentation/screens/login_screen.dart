@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/app_colors.dart';
+import '../../../../core/constants/country_codes.dart';
 import '../../domain/models/auth_state.dart';
 import '../controllers/auth_controller.dart';
+import '../widgets/country_picker_sheet.dart';
 import 'otp_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -14,12 +16,25 @@ class LoginScreen extends ConsumerStatefulWidget {
 
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _phoneController = TextEditingController();
-  final String _countryCode = "+1";
+  CountryCode _selectedCountry = CountryCodes.all.first; // Default US, fully changeable
 
   @override
   void dispose() {
     _phoneController.dispose();
     super.dispose();
+  }
+
+  void _showCountryPicker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => CountryPickerSheet(
+        onCountrySelected: (country) {
+          setState(() => _selectedCountry = country);
+        },
+      ),
+    );
   }
 
   void _onContinue() {
@@ -31,7 +46,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return;
     }
 
-    final fullNumber = "$_countryCode$rawNumber";
+    final fullNumber = "${_selectedCountry.dialCode}$rawNumber";
     ref.read(authControllerProvider.notifier).sendCode(phoneNumber: fullNumber);
   }
 
@@ -115,14 +130,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 keyboardType: TextInputType.phone,
                 style: const TextStyle(color: AppColors.textLight, fontSize: 16),
                 decoration: InputDecoration(
-                  prefixIcon: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                    child: Text(
-                      _countryCode,
-                      style: const TextStyle(color: AppColors.textLight, fontWeight: FontWeight.bold, fontSize: 16),
+                  prefixIcon: InkWell(
+                    onTap: _showCountryPicker,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(_selectedCountry.flag, style: const TextStyle(fontSize: 20)),
+                          const SizedBox(width: 6),
+                          Text(
+                            _selectedCountry.dialCode,
+                            style: const TextStyle(
+                              color: AppColors.textLight,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const Icon(Icons.arrow_drop_down_rounded, color: AppColors.textMuted, size: 20),
+                        ],
+                      ),
                     ),
                   ),
-                  hintText: "(555) 000-0000",
+                  hintText: "1700 000000",
                 ),
                 onSubmitted: (_) => _onContinue(),
               ),
