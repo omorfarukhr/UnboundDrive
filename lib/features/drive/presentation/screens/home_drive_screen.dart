@@ -10,6 +10,7 @@ import '../widgets/file_card.dart';
 import '../widgets/file_preview_dialog.dart';
 import '../widgets/storage_meter.dart';
 import '../widgets/share_privacy_dialog.dart';
+import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../backup/presentation/screens/backup_settings_screen.dart';
 import '../../../transfers/presentation/screens/transfer_center_screen.dart';
 
@@ -515,24 +516,80 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
                   leading: const Icon(Icons.upload_file_rounded, color: AppColors.primaryLight),
                   title: const Text("Upload Files", style: TextStyle(color: AppColors.textLight)),
                   subtitle: const Text("Documents, ZIP, Audio, or Any File from PC/Phone", style: TextStyle(color: AppColors.textMuted)),
-                  onTap: () {
+                  onTap: () async {
                     Navigator.pop(context);
-                    ref.read(driveControllerProvider.notifier).pickAndUploadFiles(
-                      masterPassword: "user_vault_secure_pwd",
-                      targetFolderId: _currentFolderId,
-                    );
+                    final auth = ref.read(authControllerProvider);
+                    try {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Selecting and encrypting file(s)..."),
+                          duration: Duration(seconds: 2),
+                          backgroundColor: AppColors.darkCard,
+                        ),
+                      );
+                      await ref.read(driveControllerProvider.notifier).pickAndUploadFiles(
+                        masterPassword: "user_vault_secure_pwd",
+                        userPhone: auth.phoneNumber,
+                        targetFolderId: _currentFolderId,
+                      );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("File(s) encrypted & uploaded successfully!"),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text("Upload notice: $e"),
+                            backgroundColor: Colors.redAccent,
+                          ),
+                        );
+                      }
+                    }
                   },
                 ),
                 ListTile(
                   leading: const Icon(Icons.photo_library_rounded, color: Colors.cyan),
                   title: const Text("Upload Photos & Videos", style: TextStyle(color: AppColors.textLight)),
                   subtitle: const Text("Original quality, uncompressed", style: TextStyle(color: AppColors.textMuted)),
-                  onTap: () {
+                  onTap: () async {
                     Navigator.pop(context);
-                    ref.read(driveControllerProvider.notifier).pickAndUploadMedia(
-                      masterPassword: "user_vault_secure_pwd",
-                      targetFolderId: _currentFolderId,
-                    );
+                    final auth = ref.read(authControllerProvider);
+                    try {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Selecting and encrypting media..."),
+                          duration: Duration(seconds: 2),
+                          backgroundColor: AppColors.darkCard,
+                        ),
+                      );
+                      await ref.read(driveControllerProvider.notifier).pickAndUploadMedia(
+                        masterPassword: "user_vault_secure_pwd",
+                        userPhone: auth.phoneNumber,
+                        targetFolderId: _currentFolderId,
+                      );
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Media encrypted & uploaded successfully!"),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text("Upload notice: $e"),
+                            backgroundColor: Colors.redAccent,
+                          ),
+                        );
+                      }
+                    }
                   },
                 ),
                 ListTile(

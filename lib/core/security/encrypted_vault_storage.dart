@@ -1,8 +1,10 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:io' as io;
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'hardware_security_manager.dart';
 import 'isolate_crypto_worker.dart';
 import 'zero_knowledge_crypto.dart';
@@ -19,25 +21,41 @@ import 'zero_knowledge_crypto.dart';
 /// 2. Hardware Keystore integration: Master credentials stored in Android Keystore / iOS Secure Enclave.
 /// 3. Authenticated Tamper-Proof Storage (AES-256-EtM).
 /// 4. Atomic file swapping to prevent corruption during sudden power-off/crash.
+/// 5. Web LocalStorage / SharedPreferences encrypted vault sandbox on browser runtimes.
 class EncryptedVaultStorage {
   static const String _ledgerFileName = "vault_ledger.ubd";
   static const String _journalFileName = "transfer_journal.ubd";
+  static final Map<String, Uint8List> _webMemoryCache = {};
 
   static Future<String> _getAppStoragePath() async {
     final dir = await getApplicationDocumentsDirectory();
-    final vaultDir = Directory("${dir.path}/.unbound_vault");
+    final vaultDir = io.Directory("${dir.path}/.unbound_vault");
     if (!await vaultDir.exists()) {
       await vaultDir.create(recursive: true);
     }
     return vaultDir.path;
   }
 
-  /// Saves encrypted payload to local disk atomically
+  /// Saves encrypted payload to local disk atomically or web sandbox
   static Future<void> saveEncryptedFile({
     required String fileName,
     required Uint8List payload,
     required enc.Key masterKey,
   }) async {
+    // Web sandbox branch
+    if (kIsWeb) {
+      final envelope = await IsolateCryptoWorker.sealEnvelope(
+        payload: payload,
+        keyBytes: Uint8List.fromList(masterKey.bytes),
+      );
+      _webMemoryCache[fileName] = envelope;
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString("ubd_vault_$fileName", base64Encode(envelope));
+      } catch (_) {}
+      return;
+    }
+
     final dirPath = await _getAppStoragePath();
     final targetPath = "$dirPath/$fileName";
     final tempPath = "$targetPath.tmp";
@@ -49,18 +67,39 @@ class EncryptedVaultStorage {
     );
 
     // Atomic write pattern: write to temp file then rename to avoid corruption
-    final tempFile = File(tempPath);
+    final tempFile = io.File(tempPath);
     await tempFile.writeAsBytes(envelope, flush: true);
     await tempFile.rename(targetPath);
   }
 
-  /// Reads and decrypts an encrypted file from local disk
+  /// Reads and decrypts an encrypted file from local disk or web sandbox
   static Future<Uint8List?> readEncryptedFile({
     required String fileName,
     required enc.Key masterKey,
   }) async {
+    if (kIsWeb) {
+      Uint8List? envelopeBytes = _webMemoryCache[fileName];
+      if (envelopeBytes == null) {
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final b64 = prefs.getString("ubd_vault_$fileName");
+          if (b64 != null) {
+            envelopeBytes = base64Decode(b64);
+            _webMemoryCache[fileName] = envelopeBytes;
+          }
+        } catch (_) {}
+      }
+      if (envelopeBytes == null || envelopeBytes.isEmpty) return null;
+
+      final decrypted = await IsolateCryptoWorker.openEnvelope(
+        envelopeBytes: envelopeBytes,
+        keyBytes: Uint8List.fromList(masterKey.bytes),
+      );
+      return decrypted;
+    }
+
     final dirPath = await _getAppStoragePath();
-    final targetFile = File("$dirPath/$fileName");
+    final targetFile = io.File("$dirPath/$fileName");
 
     if (!await targetFile.exists()) {
       return null;
@@ -134,11 +173,22 @@ class EncryptedVaultStorage {
 
   /// Secure Wipe of all local vault caches (Emergency Lockdown / Sign Out)
   static Future<void> securePurgeAllLocalData() async {
+    if (kIsWeb) {
+      _webMemoryCache.clear();
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove("ubd_vault_$_ledgerFileName");
+        await prefs.remove("ubd_vault_$_journalFileName");
+      } catch (_) {}
+      await HardwareSecurityManager.purgeHardwareCredentials();
+      return;
+    }
+
     final dirPath = await _getAppStoragePath();
-    final vaultDir = Directory(dirPath);
+    final vaultDir = io.Directory(dirPath);
     if (await vaultDir.exists()) {
       // Overwrite each file with random noise before deleting to prevent flash recovery
-      final files = vaultDir.listSync().whereType<File>();
+      final files = vaultDir.listSync().whereType<io.File>();
       for (final file in files) {
         final length = await file.length();
         if (length > 0) {

@@ -1,5 +1,7 @@
 import 'dart:convert';
+import 'dart:io' as io;
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -54,7 +56,7 @@ class DriveController extends StateNotifier<List<DriveItem>> {
     return enc.Key(keyBytes);
   }
 
-  /// Picks files from device storage, encrypts via isolate, and uploads with resumable chunking
+  /// Picks files from device storage, encrypts via isolate/web, and uploads with resumable chunking
   Future<void> pickAndUploadFiles({
     required String masterPassword,
     String? userPhone,
@@ -70,9 +72,27 @@ class DriveController extends StateNotifier<List<DriveItem>> {
     final masterKey = await _deriveMasterKey(masterPassword);
 
     for (final file in result.files) {
-      if (file.bytes == null && file.path == null) continue;
+      Uint8List bytes = file.bytes ?? Uint8List(0);
 
-      final Uint8List bytes = file.bytes ?? Uint8List(0);
+      // On web/streaming or desktop if bytes were not directly attached:
+      if (bytes.isEmpty && file.readStream != null) {
+        try {
+          final builder = BytesBuilder();
+          await for (final chunk in file.readStream!) {
+            builder.add(chunk);
+          }
+          bytes = builder.toBytes();
+        } catch (_) {}
+      }
+
+      if (!kIsWeb && bytes.isEmpty && file.path != null) {
+        try {
+          bytes = io.File(file.path!).readAsBytesSync();
+        } catch (_) {}
+      }
+
+      if (bytes.isEmpty) continue;
+
       final fileName = file.name;
       final fileHash = await IsolateCryptoWorker.computeSha256Checksum(bytes);
 
