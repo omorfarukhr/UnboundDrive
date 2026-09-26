@@ -104,7 +104,7 @@ async def handle_send_code(request):
                 print(f"[Telegram Bridge] AuthRestartError (DC migration required). Reconnecting...")
                 await asyncio.sleep(1.2)
                 await ensure_connected(client)
-            except (ConnectionError, errors.common.CannotSendRequestsError):
+            except (ConnectionError, OSError, errors.RPCError):
                 print(f"[Telegram Bridge] Reconnecting to Telegram MTProto transport...")
                 await asyncio.sleep(1.0)
                 await ensure_connected(client)
