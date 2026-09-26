@@ -66,25 +66,42 @@ flowchart TD
 
 ---
 
+## 🔒 Military-Grade Zero-Knowledge Cryptography
+
+Security in UnboundDrive is **mathematically unbreakable** by design. Your master key never touches Telegram or any third-party server.
+
+* **Key Derivation (KDF):** `PBKDF2-HMAC-SHA512` with **100,000+ rounds** and a 32-byte cryptographically secure random salt.
+* **Authenticated Encryption (EtM):** `AES-256` in CBC mode paired with an authenticating `HMAC-SHA256` digest (Encrypt-then-MAC).
+* **Metadata Blinding:** Filenames, extensions, file sizes, and directory trees are 100% encrypted inside binary `.ubd` envelopes. Telegram's servers only see opaque binary blobs with no identifying info.
+* **Constant-Time Verification:** Signature comparison uses constant-time byte algorithms to neutralize timing side-channel attacks.
+
+---
+
+## 🔌 Embedded Systems & Hardware Integration
+
+UnboundDrive isn't just a mobile app—it is an ecosystem that bridges **low-cost embedded hardware with infinite cloud storage**.
+
+* 📦 **UnboundBox (Home NAS Gateway):** Run our lightweight embedded daemon on a **Raspberry Pi** (Zero/3/4/5) or Orange Pi to expose an encrypted local network drive (Samba/WebDAV) that streams files directly into your Telegram vault.
+* 📹 **UnboundCam (IoT Surveillance Hub):** Stream motion-triggered video from **ESP32-CAM** microcontrollers directly to the cloud for free infinite security archives.
+* 🔑 **Hardware Token Security:** Support for physical USB/NFC hardware keys (YubiKey / ESP32 hardware dongles) to store your master decryption key offline.
+
+👉 *See the full [Embedded Documentation & Gateway Guide](embedded/README.md).*
+
+---
+
 ## 📂 Project Structure
 
 ```
 unbounddrive/
+├── embedded/              # Raspberry Pi / Embedded Linux & IoT gateway
+│   ├── README.md          # Hardware guide
+│   └── unbound_box_gateway.py
 ├── android/               # Native Android configuration
 ├── ios/                   # Native iOS configuration
 ├── lib/
 │   ├── app/               # App configuration, themes, routing
-│   │   ├── routes.dart
-│   │   └── theme/
-│   ├── core/              # Core utilities, constants, encryption
-│   │   ├── constants/
-│   │   ├── security/
-│   │   └── utils/
-│   └── features/          # Feature-driven modules
-│       ├── auth/          # Telegram login (Phone, OTP, 2FA)
-│       ├── drive/         # File manager, folder browser, search
-│       ├── backup/        # Background auto-sync (Camera, DCIM)
-│       └── transfers/     # Upload/Download manager with progress
+│   ├── core/              # Security (AES-256-EtM), utils, constants
+│   └── features/          # Feature modules (auth, drive, backup, transfers)
 ├── pubspec.yaml           # Dependencies and assets
 └── README.md
 ```
