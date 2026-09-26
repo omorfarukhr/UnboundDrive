@@ -4,6 +4,9 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:encrypt/encrypt.dart' as enc;
 
+import 'argon2id_kdf.dart';
+import 'hardware_security_manager.dart';
+
 /// ZeroKnowledgeCrypto
 /// ----------------------------------------------------
 /// Military-Grade Client-Side Zero-Knowledge Cryptographic Engine
@@ -14,7 +17,7 @@ import 'package:encrypt/encrypt.dart' as enc;
 /// 2. Authenticated Encryption: AES-256 in CBC/GCM with HMAC-SHA256 verification (Encrypt-then-MAC).
 /// 3. Metadata Blinding: File names, sizes, extensions, and folder paths are 100% encrypted.
 ///    To Telegram data centers, every file is an opaque binary envelope (.ubd).
-/// 4. Cryptographic KDF: PBKDF2-HMAC-SHA512 with 100,000+ iterations + unique user salt.
+/// 4. Cryptographic KDF: Argon2id (Memory-Hard) & PBKDF2-HMAC-SHA512 with 100,000+ iterations.
 class ZeroKnowledgeCrypto {
   static const int kIterations = 100000;
   static const int kKeyLengthBytes = 32; // 256 bits
@@ -27,6 +30,26 @@ class ZeroKnowledgeCrypto {
       salt[i] = random.nextInt(256);
     }
     return salt;
+  }
+
+  /// Derives a 256-bit AES master encryption key using RFC 9106 Argon2id memory-hard KDF
+  /// Neutralizes GPU/ASIC brute-force cracking clusters.
+  static enc.Key deriveMasterKeyArgon2id({
+    required String masterPassphrase,
+    required Uint8List salt,
+    int memoryCostKb = 16 * 1024,
+  }) {
+    final keyBytes = Argon2idEngine.deriveKey(
+      passphrase: masterPassphrase,
+      salt: salt,
+      memoryCostKb: memoryCostKb,
+    );
+    return enc.Key(keyBytes);
+  }
+
+  /// Securely zeroes out sensitive cryptographic memory in RAM
+  static void wipeKey(enc.Key key) {
+    HardwareSecurityManager.zeroizeMemory(key.bytes);
   }
 
   /// Derives a 256-bit AES master encryption key from user's master passphrase

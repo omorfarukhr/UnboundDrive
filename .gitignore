@@ -80,5 +80,7 @@ app.*.symbols
 *.key
 *.jks
 *.keystore
+*.session
+*.session-journal
 service_account.json
 credentials.json
