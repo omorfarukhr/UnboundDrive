@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import '../../../../core/transfers/resumable_transfer_manager.dart';
 
 enum FilePrivacy {
@@ -20,6 +21,10 @@ class DriveItem {
   final bool isLinkActive;
   final int downloadCount;
   final List<ChunkRecord>? chunks;
+  final Uint8List? rawBytes;
+  final String? previewText;
+  final String? parentFolderId;
+  final String? sha256Checksum;
 
   const DriveItem({
     required this.id,
@@ -36,6 +41,10 @@ class DriveItem {
     this.isLinkActive = false,
     this.downloadCount = 0,
     this.chunks,
+    this.rawBytes,
+    this.previewText,
+    this.parentFolderId,
+    this.sha256Checksum,
   });
 
   bool get isPublic => privacy == FilePrivacy.publicWithLink && isLinkActive;
@@ -55,6 +64,10 @@ class DriveItem {
     bool? isLinkActive,
     int? downloadCount,
     List<ChunkRecord>? chunks,
+    Uint8List? rawBytes,
+    String? previewText,
+    String? parentFolderId,
+    String? sha256Checksum,
   }) {
     return DriveItem(
       id: id ?? this.id,
@@ -71,6 +84,10 @@ class DriveItem {
       isLinkActive: isLinkActive ?? this.isLinkActive,
       downloadCount: downloadCount ?? this.downloadCount,
       chunks: chunks ?? this.chunks,
+      rawBytes: rawBytes ?? this.rawBytes,
+      previewText: previewText ?? this.previewText,
+      parentFolderId: parentFolderId ?? this.parentFolderId,
+      sha256Checksum: sha256Checksum ?? this.sha256Checksum,
     );
   }
 }

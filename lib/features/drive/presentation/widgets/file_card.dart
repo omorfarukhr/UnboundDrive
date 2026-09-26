@@ -21,6 +21,10 @@ class FileCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ext = item.extension.toLowerCase();
+    final isImage = ["jpg", "jpeg", "png", "webp", "gif", "heic"].contains(ext);
+    final hasRealImage = isImage && item.rawBytes != null && item.rawBytes!.isNotEmpty;
+
     if (isGrid) {
       return InkWell(
         onTap: onTap,
@@ -66,10 +70,21 @@ class FileCard extends StatelessWidget {
                       side: const BorderSide(color: AppColors.darkBorder),
                     ),
                     onSelected: (value) {
+                      if (value == 'preview') onTap?.call();
                       if (value == 'share') onShareDirect?.call();
                       if (value == 'download') onDownload?.call();
                     },
                     itemBuilder: (context) => [
+                      const PopupMenuItem(
+                        value: 'preview',
+                        child: Row(
+                          children: [
+                            Icon(Icons.visibility_rounded, color: AppColors.primaryLight, size: 18),
+                            SizedBox(width: 8),
+                            Text("Open & Preview", style: TextStyle(color: AppColors.textLight)),
+                          ],
+                        ),
+                      ),
                       PopupMenuItem(
                         value: 'share',
                         child: Row(
@@ -99,6 +114,20 @@ class FileCard extends StatelessWidget {
                 ],
               ),
               const Spacer(),
+              if (hasRealImage)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    height: 52,
+                    width: double.infinity,
+                    color: Colors.black26,
+                    child: Image.memory(
+                      item.rawBytes!,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+              if (hasRealImage) const SizedBox(height: 6),
               Text(
                 item.name,
                 maxLines: 1,
@@ -115,40 +144,15 @@ class FileCard extends StatelessWidget {
                 children: [
                   Text(
                     item.isFolder ? "Folder" : FileUtils.formatBytes(item.size),
-                    style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                    style: const TextStyle(
+                      color: AppColors.textMuted,
+                      fontSize: 12,
+                    ),
                   ),
                   if (item.isPublic)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AppColors.success.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.public_rounded, color: AppColors.success, size: 10),
-                          SizedBox(width: 3),
-                          Text("Public", style: TextStyle(color: AppColors.success, fontSize: 10, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    )
-                  else
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: AppColors.accent.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.lock_rounded, color: AppColors.accent, size: 10),
-                          SizedBox(width: 3),
-                          Text("Private", style: TextStyle(color: AppColors.accent, fontSize: 10, fontWeight: FontWeight.bold)),
-                        ],
-                      ),
-                    ),
+                    const Icon(Icons.link_rounded, color: AppColors.success, size: 14)
+                  else if (!item.isFolder)
+                    const Icon(Icons.shield_rounded, color: AppColors.accent, size: 14),
                 ],
               ),
             ],
@@ -182,7 +186,7 @@ class FileCard extends StatelessWidget {
         style: const TextStyle(color: AppColors.textLight, fontWeight: FontWeight.w600, fontSize: 15),
       ),
       subtitle: Text(
-        item.isFolder ? "Folder" : "${FileUtils.formatBytes(item.size)} • Today",
+        item.isFolder ? "Folder" : "${FileUtils.formatBytes(item.size)} • ${FileUtils.formatDate(item.uploadDate)}",
         style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
       ),
       trailing: Row(
@@ -221,9 +225,54 @@ class FileCard extends StatelessWidget {
               ),
             ),
           const SizedBox(width: 4),
-          IconButton(
+          PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert_rounded, color: AppColors.textMuted),
-            onPressed: onShareDirect,
+            color: AppColors.darkCard,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: AppColors.darkBorder),
+            ),
+            onSelected: (value) {
+              if (value == 'preview') onTap?.call();
+              if (value == 'share') onShareDirect?.call();
+              if (value == 'download') onDownload?.call();
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'preview',
+                child: Row(
+                  children: [
+                    Icon(Icons.visibility_rounded, color: AppColors.primaryLight, size: 18),
+                    SizedBox(width: 8),
+                    Text("Open & Preview", style: TextStyle(color: AppColors.textLight)),
+                  ],
+                ),
+              ),
+              PopupMenuItem(
+                value: 'share',
+                child: Row(
+                  children: [
+                    Icon(
+                      item.isPublic ? Icons.public_rounded : Icons.lock_outline_rounded,
+                      color: item.isPublic ? AppColors.success : AppColors.accent,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text("Share & Privacy", style: TextStyle(color: AppColors.textLight)),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'download',
+                child: Row(
+                  children: [
+                    Icon(Icons.download_rounded, color: AppColors.textLight, size: 18),
+                    SizedBox(width: 8),
+                    Text("Download", style: TextStyle(color: AppColors.textLight)),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),

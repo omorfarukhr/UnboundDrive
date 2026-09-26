@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:encrypt/encrypt.dart' as enc;
 import 'package:unbounddrive/core/network/circuit_breaker.dart';
 import 'package:unbounddrive/core/network/load_balanced_transfer_pool.dart';
 import 'package:unbounddrive/core/security/isolate_crypto_worker.dart';

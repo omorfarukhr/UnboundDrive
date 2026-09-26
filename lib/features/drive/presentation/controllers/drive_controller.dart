@@ -1,8 +1,10 @@
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../../core/constants/sample_vault_data.dart';
 import '../../../../core/security/encrypted_vault_storage.dart';
 import '../../../../core/security/hardware_security_manager.dart';
 import '../../../../core/security/isolate_crypto_worker.dart';
@@ -26,54 +28,7 @@ class DriveController extends StateNotifier<List<DriveItem>> {
   final VaultStorageService _storageService;
 
   DriveController(this._storageService)
-      : super([
-          DriveItem(
-            id: "1",
-            name: "Camera Auto-Backup",
-            size: 0,
-            extension: "",
-            isFolder: true,
-            uploadDate: DateTime.now(),
-          ),
-          DriveItem(
-            id: "2",
-            name: "Work Documents",
-            size: 0,
-            extension: "",
-            isFolder: true,
-            uploadDate: DateTime.now(),
-          ),
-          DriveItem(
-            id: "3",
-            name: "Trip_to_California_4K.mp4",
-            size: 1420000000,
-            extension: "mp4",
-            isEncrypted: true,
-            uploadDate: DateTime.now(),
-            privacy: FilePrivacy.publicWithLink,
-            isLinkActive: true,
-            directShareUrl: "https://dl.unbounddrive.app/f/ca4k99",
-          ),
-          DriveItem(
-            id: "4",
-            name: "Financial_Report_2026.pdf",
-            size: 4500000,
-            extension: "pdf",
-            uploadDate: DateTime.now(),
-            privacy: FilePrivacy.privateOnly,
-            isLinkActive: false,
-          ),
-          DriveItem(
-            id: "5",
-            name: "Sunset_GrandCanyon.heic",
-            size: 8900000,
-            extension: "heic",
-            uploadDate: DateTime.now(),
-            privacy: FilePrivacy.publicWithLink,
-            isLinkActive: true,
-            directShareUrl: "https://dl.unbounddrive.app/f/sunset",
-          ),
-        ]);
+      : super(SampleVaultData.getInitialRealDriveItems());
 
   /// Derives master key using hardware salt and Argon2id in a background isolate
   Future<enc.Key> _deriveMasterKey(String masterPassword) async {
@@ -103,6 +58,7 @@ class DriveController extends StateNotifier<List<DriveItem>> {
   Future<void> pickAndUploadFiles({
     required String masterPassword,
     String? userPhone,
+    String? targetFolderId,
   }) async {
     final result = await FilePicker.platform.pickFiles(
       allowMultiple: true,
@@ -118,14 +74,30 @@ class DriveController extends StateNotifier<List<DriveItem>> {
 
       final Uint8List bytes = file.bytes ?? Uint8List(0);
       final fileName = file.name;
+      final fileHash = await IsolateCryptoWorker.computeSha256Checksum(bytes);
 
-      final newItem = await _storageService.uploadFile(
+      String? previewText;
+      final ext = fileName.contains('.') ? fileName.split('.').last.toLowerCase() : '';
+      if (['txt', 'md', 'json', 'csv', 'dart', 'py', 'html', 'js', 'xml', 'log'].contains(ext) && bytes.isNotEmpty) {
+        try {
+          previewText = utf8.decode(bytes);
+        } catch (_) {}
+      }
+
+      final uploadedItem = await _storageService.uploadFile(
         fileName: fileName,
         fileBytes: bytes,
         masterKey: masterKey,
         channelId: -100982736412,
         userPhone: userPhone,
         enableEncryption: true,
+      );
+
+      final newItem = uploadedItem.copyWith(
+        rawBytes: bytes,
+        previewText: previewText,
+        sha256Checksum: fileHash,
+        parentFolderId: targetFolderId,
       );
 
       state = [newItem, ...state];
@@ -139,6 +111,7 @@ class DriveController extends StateNotifier<List<DriveItem>> {
   Future<void> pickAndUploadMedia({
     required String masterPassword,
     String? userPhone,
+    String? targetFolderId,
   }) async {
     final picker = ImagePicker();
     final media = await picker.pickImage(source: ImageSource.gallery);
@@ -146,16 +119,23 @@ class DriveController extends StateNotifier<List<DriveItem>> {
 
     final bytes = await media.readAsBytes();
     final fileName = media.name;
+    final fileHash = await IsolateCryptoWorker.computeSha256Checksum(bytes);
 
     final masterKey = await _deriveMasterKey(masterPassword);
 
-    final newItem = await _storageService.uploadFile(
+    final uploadedItem = await _storageService.uploadFile(
       fileName: fileName,
       fileBytes: bytes,
       masterKey: masterKey,
       channelId: -100982736412,
       userPhone: userPhone,
       enableEncryption: true,
+    );
+
+    final newItem = uploadedItem.copyWith(
+      rawBytes: bytes,
+      sha256Checksum: fileHash,
+      parentFolderId: targetFolderId,
     );
 
     state = [newItem, ...state];
@@ -167,6 +147,10 @@ class DriveController extends StateNotifier<List<DriveItem>> {
     required String masterPassword,
     String? userPhone,
   }) async {
+    if (item.rawBytes != null && item.rawBytes!.isNotEmpty) {
+      return item.rawBytes!;
+    }
+
     final masterKey = await _deriveMasterKey(masterPassword);
     return await _storageService.downloadFile(
       item: item,
@@ -176,7 +160,7 @@ class DriveController extends StateNotifier<List<DriveItem>> {
   }
 
   /// Creates a new virtual folder
-  void createFolder(String folderName) {
+  void createFolder(String folderName, {String? parentFolderId}) {
     final newFolder = DriveItem(
       id: "folder_${DateTime.now().millisecondsSinceEpoch}",
       name: folderName.trim(),
@@ -184,6 +168,7 @@ class DriveController extends StateNotifier<List<DriveItem>> {
       extension: "",
       isFolder: true,
       uploadDate: DateTime.now(),
+      parentFolderId: parentFolderId,
     );
     state = [newFolder, ...state];
   }

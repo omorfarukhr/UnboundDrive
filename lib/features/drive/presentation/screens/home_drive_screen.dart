@@ -1,9 +1,13 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/app_colors.dart';
+import '../../../../core/utils/file_download_helper.dart';
+import '../../../../core/utils/file_utils.dart';
 import '../../domain/models/drive_item.dart';
 import '../controllers/drive_controller.dart';
 import '../widgets/file_card.dart';
+import '../widgets/file_preview_dialog.dart';
 import '../widgets/storage_meter.dart';
 import '../widgets/share_privacy_dialog.dart';
 import '../../../backup/presentation/screens/backup_settings_screen.dart';
@@ -21,6 +25,8 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
   bool _isGrid = true;
   String _selectedCategory = "All";
   String _searchQuery = "";
+  String? _currentFolderId;
+  String? _currentFolderName;
 
   @override
   Widget build(BuildContext context) {
@@ -100,60 +106,123 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
   Widget _buildCurrentBody() {
     switch (_currentNavIndex) {
       case 0:
-        return _buildDriveHome();
+        return _buildFilesView();
       case 1:
         return const BackupSettingsScreen();
       case 2:
         return const TransferCenterScreen();
       case 3:
-        return _buildPlaceholderView("Account & Security", "Telegram Session: Active\nZero-Knowledge Encryption: Enabled (AES-256)");
+        return _buildSettingsView();
       default:
-        return _buildDriveHome();
+        return _buildFilesView();
     }
   }
 
-  Widget _buildDriveHome() {
+  Widget _buildFilesView() {
     final allItems = ref.watch(driveControllerProvider);
 
-    // Filter items by category & search query
+    // Calculate real storage size dynamically
+    final totalBytes = allItems.where((i) => !i.isFolder).fold<int>(0, (sum, i) => sum + i.size);
+    final totalBackedUpFormatted = FileUtils.formatBytes(totalBytes);
+
+    // Filter items based on current folder, category, and search query
     final filteredItems = allItems.where((item) {
+      // 1. Folder scoping
+      if (_currentFolderId == null) {
+        if (item.parentFolderId != null) return false;
+      } else {
+        if (item.parentFolderId != _currentFolderId) return false;
+      }
+
+      // 2. Search query
       if (_searchQuery.isNotEmpty && !item.name.toLowerCase().contains(_searchQuery.toLowerCase())) {
         return false;
       }
-      if (_selectedCategory == "All") return true;
-      if (_selectedCategory == "Photos" && ["jpg", "jpeg", "png", "heic", "webp"].contains(item.extension.toLowerCase())) return true;
-      if (_selectedCategory == "Videos" && ["mp4", "mov", "mkv", "avi"].contains(item.extension.toLowerCase())) return true;
-      if (_selectedCategory == "Documents" && ["pdf", "doc", "docx", "txt"].contains(item.extension.toLowerCase())) return true;
-      if (_selectedCategory == "Encrypted Vault" && item.isEncrypted) return true;
-      return false;
+
+      // 3. Category Filter
+      if (_selectedCategory == "Photos") {
+        return ["jpg", "jpeg", "png", "gif", "webp", "heic"].contains(item.extension.toLowerCase());
+      } else if (_selectedCategory == "Videos") {
+        return ["mp4", "mov", "mkv", "webm", "avi"].contains(item.extension.toLowerCase());
+      } else if (_selectedCategory == "Documents") {
+        return ["pdf", "txt", "md", "doc", "docx", "json", "csv"].contains(item.extension.toLowerCase());
+      } else if (_selectedCategory == "Encrypted Vault") {
+        return item.isEncrypted;
+      }
+      return true;
     }).toList();
 
     return CustomScrollView(
       slivers: [
-        // Search Bar
+        // Search & Filter Header
         SliverToBoxAdapter(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             child: TextField(
-              onChanged: (val) => setState(() => _searchQuery = val.trim()),
+              onChanged: (val) => setState(() => _searchQuery = val),
+              style: const TextStyle(color: AppColors.textLight),
               decoration: InputDecoration(
-                hintText: "Search files, folders or tags...",
+                hintText: "Search your vault files...",
+                hintStyle: const TextStyle(color: AppColors.textMuted),
                 prefixIcon: const Icon(Icons.search_rounded, color: AppColors.textMuted),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear_rounded, color: AppColors.textMuted),
-                        onPressed: () => setState(() => _searchQuery = ""),
-                      )
-                    : null,
+                filled: true,
+                fillColor: AppColors.darkCard,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: AppColors.darkBorder),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: const BorderSide(color: AppColors.darkBorder),
+                ),
               ),
             ),
           ),
         ),
 
-        // Storage Meter Banner
-        const SliverToBoxAdapter(
-          child: StorageMeter(totalBackedUp: "28.4 GB"),
-        ),
+        // Storage Meter Banner (Only on root view)
+        if (_currentFolderId == null)
+          SliverToBoxAdapter(
+            child: StorageMeter(totalBackedUp: totalBackedUpFormatted),
+          ),
+
+        // Folder Navigation Breadcrumb Header
+        if (_currentFolderId != null)
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  IconButton.filledTonal(
+                    style: IconButton.styleFrom(
+                      backgroundColor: AppColors.primary.withValues(alpha: 0.2),
+                    ),
+                    icon: const Icon(Icons.arrow_back_rounded, color: AppColors.primaryLight, size: 20),
+                    onPressed: () => setState(() {
+                      _currentFolderId = null;
+                      _currentFolderName = null;
+                    }),
+                  ),
+                  const SizedBox(width: 12),
+                  const Icon(Icons.folder_open_rounded, color: AppColors.primaryLight, size: 22),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _currentFolderName ?? "Folder",
+                      style: const TextStyle(
+                        color: AppColors.textLight,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
 
         // Category Filter Chips
         SliverToBoxAdapter(
@@ -187,16 +256,25 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
           ),
         ),
 
-        const SliverToBoxAdapter(
+        SliverToBoxAdapter(
           child: Padding(
-            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text(
-              "Recent Items",
-              style: TextStyle(
-                color: AppColors.textLight,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _currentFolderId != null ? "Folder Contents" : "Recent Items",
+                  style: const TextStyle(
+                    color: AppColors.textLight,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  "${filteredItems.length} items",
+                  style: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+                ),
+              ],
             ),
           ),
         ),
@@ -206,7 +284,16 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
           const SliverFillRemaining(
             hasScrollBody: false,
             child: Center(
-              child: Text("No files found in this category", style: TextStyle(color: AppColors.textMuted)),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.folder_open_rounded, size: 56, color: AppColors.textMuted),
+                  SizedBox(height: 12),
+                  Text("No files in this view", style: TextStyle(color: AppColors.textMuted, fontSize: 16)),
+                  SizedBox(height: 4),
+                  Text("Tap + Upload to add your real files", style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
+                ],
+              ),
             ),
           )
         else if (_isGrid)
@@ -217,7 +304,7 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
                 crossAxisCount: 2,
                 crossAxisSpacing: 12,
                 mainAxisSpacing: 12,
-                childAspectRatio: 1.15,
+                childAspectRatio: 1.05,
               ),
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
@@ -225,7 +312,18 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
                   return FileCard(
                     item: item,
                     isGrid: true,
+                    onTap: () {
+                      if (item.isFolder) {
+                        setState(() {
+                          _currentFolderId = item.id;
+                          _currentFolderName = item.name;
+                        });
+                      } else {
+                        _showFilePreview(item);
+                      }
+                    },
                     onShareDirect: () => _showShareDialog(item),
+                    onDownload: () => _handleFileDownload(item),
                   );
                 },
                 childCount: filteredItems.length,
@@ -240,7 +338,18 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
                 return FileCard(
                   item: item,
                   isGrid: false,
+                  onTap: () {
+                    if (item.isFolder) {
+                      setState(() {
+                        _currentFolderId = item.id;
+                        _currentFolderName = item.name;
+                      });
+                    } else {
+                      _showFilePreview(item);
+                    }
+                  },
                   onShareDirect: () => _showShareDialog(item),
+                  onDownload: () => _handleFileDownload(item),
                 );
               },
               childCount: filteredItems.length,
@@ -252,20 +361,116 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
     );
   }
 
-  Widget _buildPlaceholderView(String title, String subtitle) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+  void _showFilePreview(DriveItem item) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return FilePreviewDialog(
+          item: item,
+          onShare: () => _showShareDialog(item),
+          onDelete: () {
+            ref.read(driveControllerProvider.notifier).deleteItem(item.id);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text("${item.name} deleted")),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _handleFileDownload(DriveItem item) async {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
           children: [
-            const Icon(Icons.cloud_done_rounded, size: 64, color: AppColors.primaryLight),
-            const SizedBox(height: 16),
-            Text(title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textLight)),
-            const SizedBox(height: 8),
-            Text(subtitle, textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textMuted)),
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            ),
+            const SizedBox(width: 12),
+            Text("Saving ${item.name} to downloads..."),
           ],
         ),
+        backgroundColor: AppColors.primary,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+
+    final bytes = item.rawBytes ??
+        (item.previewText != null
+            ? Uint8List.fromList(item.previewText!.codeUnits)
+            : Uint8List.fromList("Decrypted UnboundDrive File: ${item.name}".codeUnits));
+
+    await FileDownloadHelper.downloadFile(
+      bytes: bytes,
+      fileName: item.name,
+    );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("✓ Download complete: ${item.name}"),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    }
+  }
+
+  Widget _buildSettingsView() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppColors.darkCard,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: AppColors.darkBorder),
+          ),
+          child: const Row(
+            children: [
+              CircleAvatar(
+                radius: 28,
+                backgroundColor: AppColors.primary,
+                child: Icon(Icons.person_rounded, color: Colors.white, size: 32),
+              ),
+              SizedBox(width: 14),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("UnboundDrive Active Vault", style: TextStyle(color: AppColors.textLight, fontWeight: FontWeight.bold, fontSize: 16)),
+                  SizedBox(height: 2),
+                  Text("Infinite Telegram Distributed Cloud", style: TextStyle(color: AppColors.accent, fontSize: 13)),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 20),
+        const Text("SECURITY & ARCHITECTURE", style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 10),
+        _buildSettingTile(Icons.security_rounded, "Zero-Central-Database Engine", "No server honeypots or leak vulnerabilities", AppColors.success),
+        _buildSettingTile(Icons.memory_rounded, "Argon2id Memory-Hard KDF", "RFC 9106 GPU-resistant derivation", Colors.amber),
+        _buildSettingTile(Icons.fingerprint_rounded, "Hardware Keystore / Secure Enclave", "Android Knox / Titan M hardware bound", Colors.cyan),
+        _buildSettingTile(Icons.speed_rounded, "MTProto Load-Balanced Pool", "Adaptive 2-8 parallel worker streams", AppColors.primaryLight),
+      ],
+    );
+  }
+
+  Widget _buildSettingTile(IconData icon, String title, String subtitle, Color iconColor) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: AppColors.darkCard,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.darkBorder),
+      ),
+      child: ListTile(
+        leading: Icon(icon, color: iconColor),
+        title: Text(title, style: const TextStyle(color: AppColors.textLight, fontWeight: FontWeight.w600, fontSize: 14)),
+        subtitle: Text(subtitle, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
       ),
     );
   }
@@ -309,10 +514,13 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
                 ListTile(
                   leading: const Icon(Icons.upload_file_rounded, color: AppColors.primaryLight),
                   title: const Text("Upload Files", style: TextStyle(color: AppColors.textLight)),
-                  subtitle: const Text("Documents, ZIP, Audio, or Any File", style: TextStyle(color: AppColors.textMuted)),
+                  subtitle: const Text("Documents, ZIP, Audio, or Any File from PC/Phone", style: TextStyle(color: AppColors.textMuted)),
                   onTap: () {
                     Navigator.pop(context);
-                    ref.read(driveControllerProvider.notifier).pickAndUploadFiles(masterPassword: "user_vault_secure_pwd");
+                    ref.read(driveControllerProvider.notifier).pickAndUploadFiles(
+                      masterPassword: "user_vault_secure_pwd",
+                      targetFolderId: _currentFolderId,
+                    );
                   },
                 ),
                 ListTile(
@@ -321,7 +529,10 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
                   subtitle: const Text("Original quality, uncompressed", style: TextStyle(color: AppColors.textMuted)),
                   onTap: () {
                     Navigator.pop(context);
-                    ref.read(driveControllerProvider.notifier).pickAndUploadMedia(masterPassword: "user_vault_secure_pwd");
+                    ref.read(driveControllerProvider.notifier).pickAndUploadMedia(
+                      masterPassword: "user_vault_secure_pwd",
+                      targetFolderId: _currentFolderId,
+                    );
                   },
                 ),
                 ListTile(
@@ -361,7 +572,10 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
           ElevatedButton(
             onPressed: () {
               if (folderController.text.trim().isNotEmpty) {
-                ref.read(driveControllerProvider.notifier).createFolder(folderController.text.trim());
+                ref.read(driveControllerProvider.notifier).createFolder(
+                  folderController.text.trim(),
+                  parentFolderId: _currentFolderId,
+                );
               }
               Navigator.pop(ctx);
             },

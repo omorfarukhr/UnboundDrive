@@ -13,6 +13,21 @@ class FileUtils {
     return "${size.toStringAsFixed(decimals)} ${suffixes[i]}";
   }
 
+  static String formatDate(DateTime date) {
+    final now = DateTime.now();
+    final diff = now.difference(date);
+    if (diff.inDays == 0) {
+      if (diff.inHours == 0) {
+        if (diff.inMinutes == 0) return "Just now";
+        return "${diff.inMinutes}m ago";
+      }
+      return "${diff.inHours}h ago";
+    } else if (diff.inDays < 7) {
+      return "${diff.inDays}d ago";
+    }
+    return "${date.day}/${date.month}/${date.year}";
+  }
+
   static IconData getFileIcon(String extension) {
     switch (extension.toLowerCase().replaceAll('.', '')) {
       case 'jpg':
