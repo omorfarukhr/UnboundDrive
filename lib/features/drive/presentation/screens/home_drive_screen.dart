@@ -1,69 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../app/theme/app_colors.dart';
 import '../../domain/models/drive_item.dart';
+import '../controllers/drive_controller.dart';
 import '../widgets/file_card.dart';
 import '../widgets/storage_meter.dart';
 import '../../../backup/presentation/screens/backup_settings_screen.dart';
+import '../../../transfers/presentation/screens/transfer_center_screen.dart';
 
-class HomeDriveScreen extends StatefulWidget {
+class HomeDriveScreen extends ConsumerStatefulWidget {
   const HomeDriveScreen({super.key});
 
   @override
-  State<HomeDriveScreen> createState() => _HomeDriveScreenState();
+  ConsumerState<HomeDriveScreen> createState() => _HomeDriveScreenState();
 }
 
-class _HomeDriveScreenState extends State<HomeDriveScreen> {
+class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
   int _currentNavIndex = 0;
   bool _isGrid = true;
   String _selectedCategory = "All";
-
-  final List<DriveItem> _demoItems = [
-    DriveItem(
-      id: "1",
-      name: "Camera Auto-Backup",
-      size: 0,
-      extension: "",
-      isFolder: true,
-      uploadDate: DateTime.now(),
-    ),
-    DriveItem(
-      id: "2",
-      name: "Work Documents",
-      size: 0,
-      extension: "",
-      isFolder: true,
-      uploadDate: DateTime.now(),
-    ),
-    DriveItem(
-      id: "3",
-      name: "Trip_to_California_4K.mp4",
-      size: 1420000000, // 1.42 GB
-      extension: "mp4",
-      isEncrypted: true,
-      uploadDate: DateTime.now(),
-    ),
-    DriveItem(
-      id: "4",
-      name: "Financial_Report_2026.pdf",
-      size: 4500000, // 4.5 MB
-      extension: "pdf",
-      uploadDate: DateTime.now(),
-    ),
-    DriveItem(
-      id: "5",
-      name: "Sunset_GrandCanyon.heic",
-      size: 8900000, // 8.9 MB
-      extension: "heic",
-      uploadDate: DateTime.now(),
-    ),
-    DriveItem(
-      id: "6",
-      name: "Full_Project_Archive.zip",
-      size: 850000000, // 850 MB
-      extension: "zip",
-      uploadDate: DateTime.now(),
-    ),
-  ];
+  String _searchQuery = "";
 
   @override
   Widget build(BuildContext context) {
@@ -147,15 +103,30 @@ class _HomeDriveScreenState extends State<HomeDriveScreen> {
       case 1:
         return const BackupSettingsScreen();
       case 2:
-        return _buildPlaceholderView("Active Transfers", "No active uploads or downloads right now.");
+        return const TransferCenterScreen();
       case 3:
-        return _buildPlaceholderView("Account & Security", "Telegram Session: Active\nZero-Knowledge Encryption: Enabled");
+        return _buildPlaceholderView("Account & Security", "Telegram Session: Active\nZero-Knowledge Encryption: Enabled (AES-256)");
       default:
         return _buildDriveHome();
     }
   }
 
   Widget _buildDriveHome() {
+    final allItems = ref.watch(driveControllerProvider);
+
+    // Filter items by category & search query
+    final filteredItems = allItems.where((item) {
+      if (_searchQuery.isNotEmpty && !item.name.toLowerCase().contains(_searchQuery.toLowerCase())) {
+        return false;
+      }
+      if (_selectedCategory == "All") return true;
+      if (_selectedCategory == "Photos" && ["jpg", "jpeg", "png", "heic", "webp"].contains(item.extension.toLowerCase())) return true;
+      if (_selectedCategory == "Videos" && ["mp4", "mov", "mkv", "avi"].contains(item.extension.toLowerCase())) return true;
+      if (_selectedCategory == "Documents" && ["pdf", "doc", "docx", "txt"].contains(item.extension.toLowerCase())) return true;
+      if (_selectedCategory == "Encrypted Vault" && item.isEncrypted) return true;
+      return false;
+    }).toList();
+
     return CustomScrollView(
       slivers: [
         // Search Bar
@@ -163,13 +134,16 @@ class _HomeDriveScreenState extends State<HomeDriveScreen> {
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: TextField(
+              onChanged: (val) => setState(() => _searchQuery = val.trim()),
               decoration: InputDecoration(
                 hintText: "Search files, folders or tags...",
                 prefixIcon: const Icon(Icons.search_rounded, color: AppColors.textMuted),
-                suffixIcon: IconButton(
-                  icon: const Icon(Icons.tune_rounded, color: AppColors.textMuted),
-                  onPressed: () {},
-                ),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear_rounded, color: AppColors.textMuted),
+                        onPressed: () => setState(() => _searchQuery = ""),
+                      )
+                    : null,
               ),
             ),
           ),
@@ -227,7 +201,14 @@ class _HomeDriveScreenState extends State<HomeDriveScreen> {
         ),
 
         // Items View (Grid or List)
-        if (_isGrid)
+        if (filteredItems.isEmpty)
+          const SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Text("No files found in this category", style: TextStyle(color: AppColors.textMuted)),
+            ),
+          )
+        else if (_isGrid)
           SliverPadding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             sliver: SliverGrid(
@@ -239,14 +220,14 @@ class _HomeDriveScreenState extends State<HomeDriveScreen> {
               ),
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
-                  final item = _demoItems[index];
+                  final item = filteredItems[index];
                   return FileCard(
                     item: item,
                     isGrid: true,
                     onShareDirect: () => _showShareDialog(item),
                   );
                 },
-                childCount: _demoItems.length,
+                childCount: filteredItems.length,
               ),
             ),
           )
@@ -254,14 +235,14 @@ class _HomeDriveScreenState extends State<HomeDriveScreen> {
           SliverList(
             delegate: SliverChildBuilderDelegate(
               (context, index) {
-                final item = _demoItems[index];
+                final item = filteredItems[index];
                 return FileCard(
                   item: item,
                   isGrid: false,
                   onShareDirect: () => _showShareDialog(item),
                 );
               },
-              childCount: _demoItems.length,
+              childCount: filteredItems.length,
             ),
           ),
 
@@ -316,7 +297,7 @@ class _HomeDriveScreenState extends State<HomeDriveScreen> {
                 child: Row(
                   children: [
                     Expanded(
-                      child: Text("https://dl.unbounddrive.app/f/${item.id}", style: const TextStyle(color: AppColors.accent, fontSize: 13)),
+                      child: Text(item.directShareUrl ?? "https://dl.unbounddrive.app/f/${item.id}", style: const TextStyle(color: AppColors.accent, fontSize: 13)),
                     ),
                     IconButton(
                       icon: const Icon(Icons.copy_rounded, color: AppColors.textLight, size: 18),
@@ -356,24 +337,65 @@ class _HomeDriveScreenState extends State<HomeDriveScreen> {
                   leading: const Icon(Icons.upload_file_rounded, color: AppColors.primaryLight),
                   title: const Text("Upload Files", style: TextStyle(color: AppColors.textLight)),
                   subtitle: const Text("Documents, ZIP, Audio, or Any File", style: TextStyle(color: AppColors.textMuted)),
-                  onTap: () => Navigator.pop(context),
+                  onTap: () {
+                    Navigator.pop(context);
+                    ref.read(driveControllerProvider.notifier).pickAndUploadFiles(masterPassword: "user_vault_secure_pwd");
+                  },
                 ),
                 ListTile(
                   leading: const Icon(Icons.photo_library_rounded, color: Colors.cyan),
                   title: const Text("Upload Photos & Videos", style: TextStyle(color: AppColors.textLight)),
                   subtitle: const Text("Original quality, uncompressed", style: TextStyle(color: AppColors.textMuted)),
-                  onTap: () => Navigator.pop(context),
+                  onTap: () {
+                    Navigator.pop(context);
+                    ref.read(driveControllerProvider.notifier).pickAndUploadMedia(masterPassword: "user_vault_secure_pwd");
+                  },
                 ),
                 ListTile(
                   leading: const Icon(Icons.create_new_folder_rounded, color: Colors.amber),
                   title: const Text("New Folder", style: TextStyle(color: AppColors.textLight)),
-                  onTap: () => Navigator.pop(context),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showNewFolderDialog();
+                  },
                 ),
               ],
             ),
           ),
         );
       },
+    );
+  }
+
+  void _showNewFolderDialog() {
+    final folderController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkCard,
+        title: const Text("New Folder", style: TextStyle(color: AppColors.textLight, fontWeight: FontWeight.bold)),
+        content: TextField(
+          controller: folderController,
+          autofocus: true,
+          style: const TextStyle(color: AppColors.textLight),
+          decoration: const InputDecoration(hintText: "Folder name"),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel", style: TextStyle(color: AppColors.textMuted)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (folderController.text.trim().isNotEmpty) {
+                ref.read(driveControllerProvider.notifier).createFolder(folderController.text.trim());
+              }
+              Navigator.pop(ctx);
+            },
+            child: const Text("Create"),
+          ),
+        ],
+      ),
     );
   }
 }
