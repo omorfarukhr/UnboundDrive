@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../../app/theme/app_colors.dart';
-import '../../drive/presentation/screens/home_drive_screen.dart';
+import '../../../drive/presentation/screens/home_drive_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -78,8 +78,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 controller: _phoneController,
                 keyboardType: TextInputType.phone,
                 style: const TextStyle(color: AppColors.textLight, fontSize: 16),
-                decoration: InputDecoration(
-                  prefixIcon: const Padding(
+                decoration: const InputDecoration(
+                  prefixIcon: Padding(
                     padding: EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                     child: Text(
                       "+1",
@@ -97,16 +97,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: ElevatedButton(
                   onPressed: _isLoading
                       ? null
-                      : () {
+                      : () async {
                           setState(() => _isLoading = true);
-                          Future.delayed(const Duration(milliseconds: 600), () {
-                            if (mounted) {
-                              Navigator.pushReplacement(
-                                context,
-                                MaterialPageRoute(builder: (_) => const HomeDriveScreen()),
-                              );
-                            }
-                          });
+                          await Future.delayed(const Duration(milliseconds: 600));
+                          if (!context.mounted) return;
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(builder: (_) => const HomeDriveScreen()),
+                          );
                         },
                   child: _isLoading
                       ? const SizedBox(
@@ -119,12 +117,12 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
 
               const SizedBox(height: 16),
-              Row(
+              const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(Icons.shield_outlined, color: AppColors.accent, size: 16),
-                  const SizedBox(width: 6),
-                  const Text(
+                  Icon(Icons.shield_outlined, color: AppColors.accent, size: 16),
+                  SizedBox(width: 6),
+                  Text(
                     "End-to-End Encrypted & Private Vault",
                     style: TextStyle(color: AppColors.textMuted, fontSize: 12),
                   ),

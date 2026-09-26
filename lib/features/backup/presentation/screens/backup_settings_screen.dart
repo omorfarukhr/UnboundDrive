@@ -66,7 +66,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
               children: [
                 SwitchListTile(
                   value: _autoBackupEnabled,
-                  activeColor: AppColors.accent,
+                  activeThumbColor: AppColors.accent,
                   title: const Text("Automatic Background Backup", style: TextStyle(color: AppColors.textLight, fontWeight: FontWeight.w600)),
                   subtitle: const Text("Upload new photos & videos automatically", style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
                   onChanged: (val) => setState(() => _autoBackupEnabled = val),
@@ -74,14 +74,14 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                 const Divider(color: AppColors.darkBorder, height: 1),
                 SwitchListTile(
                   value: _backupPhotos,
-                  activeColor: AppColors.accent,
+                  activeThumbColor: AppColors.accent,
                   title: const Text("Photos (DCIM & Camera)", style: TextStyle(color: AppColors.textLight)),
                   onChanged: _autoBackupEnabled ? (val) => setState(() => _backupPhotos = val) : null,
                 ),
                 const Divider(color: AppColors.darkBorder, height: 1),
                 SwitchListTile(
                   value: _backupVideos,
-                  activeColor: AppColors.accent,
+                  activeThumbColor: AppColors.accent,
                   title: const Text("Videos", style: TextStyle(color: AppColors.textLight)),
                   onChanged: _autoBackupEnabled ? (val) => setState(() => _backupVideos = val) : null,
                 ),
@@ -98,7 +98,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
               children: [
                 SwitchListTile(
                   value: _wifiOnly,
-                  activeColor: AppColors.accent,
+                  activeThumbColor: AppColors.accent,
                   title: const Text("Back up over Wi-Fi only", style: TextStyle(color: AppColors.textLight, fontWeight: FontWeight.w600)),
                   subtitle: const Text("Avoid using mobile data allowance", style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
                   onChanged: (val) => setState(() => _wifiOnly = val),
@@ -106,7 +106,7 @@ class _BackupSettingsScreenState extends State<BackupSettingsScreen> {
                 const Divider(color: AppColors.darkBorder, height: 1),
                 SwitchListTile(
                   value: _whileCharging,
-                  activeColor: AppColors.accent,
+                  activeThumbColor: AppColors.accent,
                   title: const Text("Only while charging", style: TextStyle(color: AppColors.textLight)),
                   subtitle: const Text("Conserve battery power during heavy uploads", style: TextStyle(color: AppColors.textMuted, fontSize: 12)),
                   onChanged: (val) => setState(() => _whileCharging = val),

@@ -21,7 +21,7 @@ class StorageMeter extends StatelessWidget {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.padBorder(Border.all(color: AppColors.primary.withValues(alpha: 0.3), width: 1)),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3), width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

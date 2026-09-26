@@ -300,11 +300,11 @@ class _HomeDriveScreenState extends State<HomeDriveScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              const Row(
                 children: [
-                  const Icon(Icons.link_rounded, color: AppColors.accent),
-                  const SizedBox(width: 8),
-                  const Text("1-Click Direct Download Link", style: TextStyle(color: AppColors.textLight, fontWeight: FontWeight.bold, fontSize: 16)),
+                  Icon(Icons.link_rounded, color: AppColors.accent),
+                  SizedBox(width: 8),
+                  Text("1-Click Direct Download Link", style: TextStyle(color: AppColors.textLight, fontWeight: FontWeight.bold, fontSize: 16)),
                 ],
               ),
               const SizedBox(height: 12),
