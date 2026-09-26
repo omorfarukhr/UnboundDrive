@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:encrypt/encrypt.dart' as enc;
 import '../../features/drive/domain/models/drive_item.dart';
+import '../transfers/resumable_transfer_manager.dart';
 import 'zero_knowledge_crypto.dart';
 
 /// SecureVaultManifest
@@ -27,49 +28,28 @@ class SecureVaultManifest {
     required this.items,
   });
 
-  /// Serializes the entire vault ledger into an encrypted binary envelope (.ubd)
-  Uint8List exportEncryptedManifest(enc.Key masterKey) {
-    final manifestMap = {
-      "version": version,
-      "lastUpdated": lastUpdated.toIso8601String(),
-      "channelId": channelId,
-      "items": items.map((i) => {
-        "id": i.id,
-        "name": i.name,
-        "size": i.size,
-        "extension": i.extension,
-        "uploadDate": i.uploadDate.toIso8601String(),
-        "isFolder": i.isFolder,
-        "isEncrypted": i.isEncrypted,
-        "telegramMessageId": i.telegramMessageId,
-        "directShareUrl": i.directShareUrl,
-        "privacy": i.privacy.name,
-        "isLinkActive": i.isLinkActive,
-        "downloadCount": i.downloadCount,
-      }).toList(),
-    };
+  Map<String, dynamic> toJson() => {
+        "version": version,
+        "lastUpdated": lastUpdated.toIso8601String(),
+        "channelId": channelId,
+        "items": items.map((i) => {
+              "id": i.id,
+              "name": i.name,
+              "size": i.size,
+              "extension": i.extension,
+              "uploadDate": i.uploadDate.toIso8601String(),
+              "isFolder": i.isFolder,
+              "isEncrypted": i.isEncrypted,
+              "telegramMessageId": i.telegramMessageId,
+              "directShareUrl": i.directShareUrl,
+              "privacy": i.privacy.name,
+              "isLinkActive": i.isLinkActive,
+              "downloadCount": i.downloadCount,
+              "chunks": i.chunks?.map((c) => c.toJson()).toList(),
+            }).toList(),
+      };
 
-    final rawJson = jsonEncode(manifestMap);
-    final rawBytes = Uint8List.fromList(utf8.encode(rawJson));
-
-    // Seal into tamper-evident binary envelope
-    return ZeroKnowledgeCrypto.sealEnvelope(payload: rawBytes, key: masterKey);
-  }
-
-  /// Deserializes and verifies an encrypted manifest envelope
-  static SecureVaultManifest importEncryptedManifest({
-    required Uint8List envelopeBytes,
-    required enc.Key masterKey,
-  }) {
-    // Decrypt and verify HMAC integrity
-    final decryptedBytes = ZeroKnowledgeCrypto.openEnvelope(
-      envelopeBytes: envelopeBytes,
-      key: masterKey,
-    );
-
-    final rawJson = utf8.decode(decryptedBytes);
-    final data = jsonDecode(rawJson) as Map<String, dynamic>;
-
+  factory SecureVaultManifest.fromJson(Map<String, dynamic> data) {
     final itemsRaw = (data["items"] as List<dynamic>?) ?? [];
     final parsedItems = itemsRaw.map((m) {
       final map = m as Map<String, dynamic>;
@@ -77,6 +57,9 @@ class SecureVaultManifest {
       final privacy = privacyStr == "publicWithLink"
           ? FilePrivacy.publicWithLink
           : FilePrivacy.privateOnly;
+
+      final chunksRaw = (map["chunks"] as List<dynamic>?) ?? [];
+      final parsedChunks = chunksRaw.map((c) => ChunkRecord.fromJson(c as Map<String, dynamic>)).toList();
 
       return DriveItem(
         id: map["id"] as String,
@@ -91,6 +74,7 @@ class SecureVaultManifest {
         privacy: privacy,
         isLinkActive: map["isLinkActive"] as bool? ?? false,
         downloadCount: map["downloadCount"] as int? ?? 0,
+        chunks: parsedChunks.isEmpty ? null : parsedChunks,
       );
     }).toList();
 
@@ -100,5 +84,27 @@ class SecureVaultManifest {
       channelId: data["channelId"] as int,
       items: parsedItems,
     );
+  }
+
+  /// Serializes the entire vault ledger into an encrypted binary envelope (.ubd)
+  Uint8List exportEncryptedManifest(enc.Key masterKey) {
+    final rawJson = jsonEncode(toJson());
+    final rawBytes = Uint8List.fromList(utf8.encode(rawJson));
+    return ZeroKnowledgeCrypto.sealEnvelope(payload: rawBytes, key: masterKey);
+  }
+
+  /// Deserializes and verifies an encrypted manifest envelope
+  static SecureVaultManifest importEncryptedManifest({
+    required Uint8List envelopeBytes,
+    required enc.Key masterKey,
+  }) {
+    final decryptedBytes = ZeroKnowledgeCrypto.openEnvelope(
+      envelopeBytes: envelopeBytes,
+      key: masterKey,
+    );
+
+    final rawJson = utf8.decode(decryptedBytes);
+    final data = jsonDecode(rawJson) as Map<String, dynamic>;
+    return SecureVaultManifest.fromJson(data);
   }
 }
