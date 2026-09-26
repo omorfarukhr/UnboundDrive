@@ -1,21 +1,28 @@
 import os
+import re
 import io
 import json
 import asyncio
 from aiohttp import web
 from telethon import TelegramClient, errors
-from telethon.tl.functions.channels import CreateChannelRequest, GetFullChannelRequest
-from telethon.tl.types import InputPeerChannel
+from telethon.tl.functions.channels import CreateChannelRequest
 
 # Telegram API credentials (official desktop client fallback or .env)
 API_ID = int(os.environ.get("TELEGRAM_API_ID", "2040"))
 API_HASH = os.environ.get("TELEGRAM_API_HASH", "b18441a1ff607e10a989891a5462e627")
 
-# Active clients map: phone -> {"client": TelegramClient, "phone_code_hash": str, "vault_channel_id": int}
+# Active clients map: clean_phone -> {"client": TelegramClient, "phone_code_hash": str, "vault_channel_id": int}
 active_clients = {}
 
 # Active concurrency limiter: max 8 concurrent MTProto file uploads to prevent rate limit starvation
 UPLOAD_SEMAPHORE = asyncio.Semaphore(8)
+
+def clean_phone(phone: str) -> str:
+    return re.sub(r'[^\d+]', '', phone).strip()
+
+def get_session_name(phone: str) -> str:
+    digits = re.sub(r'\D', '', phone)
+    return f"session_{digits}"
 
 def get_cors_headers():
     return {
@@ -27,74 +34,136 @@ def get_cors_headers():
 async def handle_options(request):
     return web.Response(headers=get_cors_headers())
 
+def get_or_create_client(phone: str):
+    phone = clean_phone(phone)
+    if phone in active_clients and active_clients[phone].get("client"):
+        return phone, active_clients[phone]["client"]
+
+    os.makedirs("server", exist_ok=True)
+    session_file = os.path.join("server", get_session_name(phone))
+    client = TelegramClient(
+        session_file,
+        API_ID,
+        API_HASH,
+        device_model="UnboundDrive Mobile",
+        system_version="Android 14",
+        app_version="2.4.0",
+        connection_retries=5,
+        retry_delay=1,
+        auto_reconnect=True,
+    )
+
+    if phone not in active_clients:
+        active_clients[phone] = {
+            "client": client,
+            "phone_code_hash": None,
+            "vault_channel_id": None,
+        }
+    else:
+        active_clients[phone]["client"] = client
+
+    return phone, client
+
+async def ensure_connected(client: TelegramClient):
+    if not client.is_connected():
+        await client.connect()
+
 def get_client_for_request(request):
     phone = request.headers.get("X-Phone", "").strip()
     if not phone and len(active_clients) == 1:
-        # Fallback to single active user session
         phone = list(active_clients.keys())[0]
-    
+
+    phone = clean_phone(phone)
     if phone and phone in active_clients:
         return phone, active_clients[phone]["client"]
+    elif phone:
+        return get_or_create_client(phone)
     return None, None
 
 async def handle_send_code(request):
     try:
         data = await request.json()
-        phone = data.get("phone_number", "").strip()
-        if not phone:
-            return web.json_response({"status": "error", "message": "Phone number is required"}, status=400, headers=get_cors_headers())
+        raw_phone = data.get("phone_number", "").strip()
+        if not raw_phone:
+            return web.json_response(
+                {"status": "error", "message": "Phone number is required."},
+                status=400,
+                headers=get_cors_headers(),
+            )
 
-        os.makedirs("server", exist_ok=True)
-        session_name = f"session_{abs(hash(phone))}"
-        client = TelegramClient(os.path.join("server", session_name), API_ID, API_HASH)
-        await client.connect()
+        phone, client = get_or_create_client(raw_phone)
+        result = None
 
-        result = await client.send_code_request(phone)
-        active_clients[phone] = {
-            "client": client,
-            "phone_code_hash": result.phone_code_hash,
-            "vault_channel_id": None,
-        }
+        for attempt in range(4):
+            try:
+                await ensure_connected(client)
+                print(f"[Telegram Bridge] Sending OTP request to {phone} (attempt {attempt+1})...")
+                result = await client.send_code_request(phone)
+                break
+            except errors.AuthRestartError:
+                print(f"[Telegram Bridge] AuthRestartError (DC migration required). Reconnecting...")
+                await asyncio.sleep(1.2)
+                await ensure_connected(client)
+            except (ConnectionError, errors.common.CannotSendRequestsError):
+                print(f"[Telegram Bridge] Reconnecting to Telegram MTProto transport...")
+                await asyncio.sleep(1.0)
+                await ensure_connected(client)
 
-        print(f"[Telegram Bridge] Code sent successfully to {phone} (Hash: {result.phone_code_hash})")
+        if not result:
+            return web.json_response(
+                {"status": "error", "message": "Connection to Telegram timed out. Please tap Continue again."},
+                status=500,
+                headers=get_cors_headers(),
+            )
+
+        active_clients[phone]["phone_code_hash"] = result.phone_code_hash
+        print(f"[Telegram Bridge] Real Telegram OTP dispatched to {phone} (Hash: {result.phone_code_hash})")
+
         return web.json_response({
             "status": "ok",
             "phone_code_hash": result.phone_code_hash,
         }, headers=get_cors_headers())
+
     except errors.PhoneNumberInvalidError:
-        return web.json_response({"status": "error", "message": "Invalid phone number."}, status=400, headers=get_cors_headers())
+        return web.json_response(
+            {"status": "error", "message": "Invalid phone number format for Telegram."},
+            status=400,
+            headers=get_cors_headers(),
+        )
     except errors.FloodWaitError as e:
-        return web.json_response({"status": "error", "message": f"Telegram rate limit: Wait {e.seconds} seconds."}, status=429, headers=get_cors_headers())
+        print(f"[Telegram Bridge] Flood wait: wait {e.seconds} seconds.")
+        return web.json_response(
+            {"status": "error", "message": f"Telegram rate limit: Wait {e.seconds} seconds.", "wait_seconds": e.seconds},
+            status=429,
+            headers=get_cors_headers(),
+        )
     except Exception as e:
         print(f"[Error send_code] {e}")
-        return web.json_response({"status": "error", "message": str(e)}, status=500, headers=get_cors_headers())
+        return web.json_response(
+            {"status": "error", "message": str(e)},
+            status=500,
+            headers=get_cors_headers(),
+        )
 
 async def handle_verify_code(request):
     try:
         data = await request.json()
-        phone = data.get("phone_number", "").strip()
+        raw_phone = data.get("phone_number", "").strip()
         code = data.get("code", "").strip()
         phone_code_hash = data.get("phone_code_hash", "").strip()
 
-        client_entry = active_clients.get(phone)
-        if not client_entry:
-            session_name = f"session_{abs(hash(phone))}"
-            client = TelegramClient(os.path.join("server", session_name), API_ID, API_HASH)
-            await client.connect()
-            client_entry = {"client": client, "phone_code_hash": phone_code_hash, "vault_channel_id": None}
-            active_clients[phone] = client_entry
-        else:
-            client = client_entry["client"]
-            if not phone_code_hash:
-                phone_code_hash = client_entry.get("phone_code_hash")
+        phone, client = get_or_create_client(raw_phone)
+        await ensure_connected(client)
+
+        if not phone_code_hash:
+            phone_code_hash = active_clients.get(phone, {}).get("phone_code_hash")
 
         try:
             user = await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
             print(f"[Telegram Bridge] Authenticated successfully as {user.first_name} ({user.id})")
-            
-            # Ensure vault channel is provisioned
+
             channel_id = await ensure_vault_channel(client)
-            client_entry["vault_channel_id"] = channel_id
+            active_clients[phone]["vault_channel_id"] = channel_id
 
             return web.json_response({
                 "status": "authenticated",
@@ -106,33 +175,44 @@ async def handle_verify_code(request):
                     "vault_channel_id": channel_id,
                 }
             }, headers=get_cors_headers())
+
         except errors.SessionPasswordNeededError:
             print(f"[Telegram Bridge] 2FA Password needed for {phone}")
             return web.json_response({"status": "2fa_required"}, headers=get_cors_headers())
         except errors.PhoneCodeInvalidError:
-            return web.json_response({"status": "error", "message": "Invalid verification code."}, status=400, headers=get_cors_headers())
+            return web.json_response(
+                {"status": "error", "message": "Invalid verification code."},
+                status=400,
+                headers=get_cors_headers(),
+            )
         except errors.PhoneCodeExpiredError:
-            return web.json_response({"status": "error", "message": "Verification code has expired. Request a new one."}, status=400, headers=get_cors_headers())
+            return web.json_response(
+                {"status": "error", "message": "Verification code expired. Please request a new one."},
+                status=400,
+                headers=get_cors_headers(),
+            )
     except Exception as e:
         print(f"[Error verify_code] {e}")
-        return web.json_response({"status": "error", "message": str(e)}, status=500, headers=get_cors_headers())
+        return web.json_response(
+            {"status": "error", "message": str(e)},
+            status=500,
+            headers=get_cors_headers(),
+        )
 
 async def handle_verify_2fa(request):
     try:
         data = await request.json()
-        phone = data.get("phone_number", "").strip()
+        raw_phone = data.get("phone_number", "").strip()
         password = data.get("password", "")
 
-        client_entry = active_clients.get(phone)
-        if not client_entry:
-            return web.json_response({"status": "error", "message": "Session expired. Please restart login."}, status=400, headers=get_cors_headers())
+        phone, client = get_or_create_client(raw_phone)
+        await ensure_connected(client)
 
-        client = client_entry["client"]
         user = await client.sign_in(password=password)
         print(f"[Telegram Bridge] 2FA Authenticated successfully as {user.first_name}")
 
         channel_id = await ensure_vault_channel(client)
-        client_entry["vault_channel_id"] = channel_id
+        active_clients[phone]["vault_channel_id"] = channel_id
 
         return web.json_response({
             "status": "authenticated",
@@ -143,18 +223,26 @@ async def handle_verify_2fa(request):
             }
         }, headers=get_cors_headers())
     except errors.PasswordHashInvalidError:
-        return web.json_response({"status": "error", "message": "Incorrect 2FA password."}, status=400, headers=get_cors_headers())
+        return web.json_response(
+            {"status": "error", "message": "Incorrect 2FA password."},
+            status=400,
+            headers=get_cors_headers(),
+        )
     except Exception as e:
-        return web.json_response({"status": "error", "message": str(e)}, status=500, headers=get_cors_headers())
+        return web.json_response(
+            {"status": "error", "message": str(e)},
+            status=500,
+            headers=get_cors_headers(),
+        )
 
 async def ensure_vault_channel(client):
     """Finds existing UnboundDrive Vault channel or creates a new strictly private channel."""
     try:
+        await ensure_connected(client)
         async for dialog in client.iter_dialogs(limit=50):
             if dialog.is_channel and "UnboundDrive Personal Vault" in dialog.name:
                 return dialog.id
 
-        # Not found, create private storage channel
         created = await client(CreateChannelRequest(
             title="UnboundDrive Personal Vault",
             about="Strictly Private Zero-Knowledge Vault Storage for UnboundDrive. Do not delete.",
@@ -164,27 +252,26 @@ async def ensure_vault_channel(client):
         print(f"[Telegram Bridge] Created private vault channel: {channel.id}")
         return channel.id
     except Exception as e:
-        print(f"[Telegram Bridge] Notice finding/creating channel: {e}")
+        print(f"[Telegram Bridge] Vault channel notice: {e}")
         return None
 
 async def handle_upload_chunk(request):
-    """Scalable chunk upload endpoint with concurrency control and FloodWait protection."""
     phone, client = get_client_for_request(request)
     if not client:
-        return web.json_response({"status": "error", "message": "Unauthorized or no active session."}, status=401, headers=get_cors_headers())
+        return web.json_response({"status": "error", "message": "Unauthorized."}, status=401, headers=get_cors_headers())
 
     try:
         chunk_bytes = await request.read()
         if not chunk_bytes:
             return web.json_response({"status": "error", "message": "Empty chunk payload."}, status=400, headers=get_cors_headers())
 
+        await ensure_connected(client)
         channel_id = active_clients.get(phone, {}).get("vault_channel_id")
         if not channel_id:
             channel_id = await ensure_vault_channel(client)
             if phone in active_clients:
                 active_clients[phone]["vault_channel_id"] = channel_id
 
-        # Load balancing concurrency control
         async with UPLOAD_SEMAPHORE:
             chunk_file = io.BytesIO(chunk_bytes)
             chunk_file.name = f"chunk_{len(chunk_bytes)}.ubd"
@@ -203,7 +290,6 @@ async def handle_upload_chunk(request):
             }, headers=get_cors_headers())
 
     except errors.FloodWaitError as e:
-        print(f"[FloodWait] Telegram rate limit active: wait {e.seconds} seconds")
         return web.json_response({
             "status": "error",
             "message": f"Telegram rate limit: Wait {e.seconds} seconds.",
@@ -214,7 +300,6 @@ async def handle_upload_chunk(request):
         return web.json_response({"status": "error", "message": str(e)}, status=500, headers=get_cors_headers())
 
 async def handle_download_chunk(request):
-    """Streams an encrypted chunk from Telegram by message ID."""
     phone, client = get_client_for_request(request)
     if not client:
         return web.json_response({"status": "error", "message": "Unauthorized."}, status=401, headers=get_cors_headers())
@@ -224,6 +309,7 @@ async def handle_download_chunk(request):
         return web.json_response({"status": "error", "message": "message_id is required."}, status=400, headers=get_cors_headers())
 
     try:
+        await ensure_connected(client)
         channel_id = active_clients.get(phone, {}).get("vault_channel_id") or "me"
         message = await client.get_messages(channel_id, ids=int(msg_id))
         if not message or not message.media:
@@ -233,12 +319,11 @@ async def handle_download_chunk(request):
         await client.download_media(message, file=buffer)
         buffer.seek(0)
 
-        response = web.Response(
+        return web.Response(
             body=buffer.read(),
             content_type="application/octet-stream",
             headers=get_cors_headers(),
         )
-        return response
     except errors.FloodWaitError as e:
         return web.json_response({
             "status": "error",
@@ -246,17 +331,16 @@ async def handle_download_chunk(request):
             "wait_seconds": e.seconds,
         }, status=429, headers=get_cors_headers())
     except Exception as e:
-        print(f"[Error download_chunk] {e}")
         return web.json_response({"status": "error", "message": str(e)}, status=500, headers=get_cors_headers())
 
 async def handle_sync_manifest(request):
-    """Pins encrypted vault ledger in user's vault channel."""
     phone, client = get_client_for_request(request)
     if not client:
         return web.json_response({"status": "error", "message": "Unauthorized."}, status=401, headers=get_cors_headers())
 
     try:
         manifest_bytes = await request.read()
+        await ensure_connected(client)
         channel_id = active_clients.get(phone, {}).get("vault_channel_id") or "me"
 
         file_obj = io.BytesIO(manifest_bytes)
@@ -268,7 +352,6 @@ async def handle_sync_manifest(request):
             caption="#unbound_manifest_v1",
             force_document=True,
         )
-        # Pin the latest ledger message for instant discovery
         try:
             await client.pin_message(channel_id, msg.id, notify=False)
         except Exception:
@@ -279,12 +362,12 @@ async def handle_sync_manifest(request):
         return web.json_response({"status": "error", "message": str(e)}, status=500, headers=get_cors_headers())
 
 async def handle_get_manifest(request):
-    """Retrieves the latest encrypted vault ledger."""
     phone, client = get_client_for_request(request)
     if not client:
         return web.json_response({"status": "error", "message": "Unauthorized."}, status=401, headers=get_cors_headers())
 
     try:
+        await ensure_connected(client)
         channel_id = active_clients.get(phone, {}).get("vault_channel_id") or "me"
         messages = await client.get_messages(channel_id, limit=20, search="#unbound_manifest_v1")
         if not messages:
@@ -303,7 +386,7 @@ async def handle_get_manifest(request):
     except Exception as e:
         return web.json_response({"status": "error", "message": str(e)}, status=500, headers=get_cors_headers())
 
-app = web.Application(client_max_size=1024 * 1024 * 100) # 100MB per chunk limit
+app = web.Application(client_max_size=1024 * 1024 * 100)
 app.router.add_route("OPTIONS", "/{tail:.*}", handle_options)
 app.router.add_post("/api/auth/send_code", handle_send_code)
 app.router.add_post("/api/auth/verify_code", handle_verify_code)
@@ -315,8 +398,8 @@ app.router.add_get("/api/drive/get_manifest", handle_get_manifest)
 
 if __name__ == "__main__":
     print("==================================================")
-    print("  [+] UnboundDrive Scalable MTProto Bridge v2.0  ")
-    print("  [*] Multi-Stream Chunk Pool & Fault Tolerance   ")
+    print("  [+] UnboundDrive Scalable MTProto Bridge v2.4  ")
+    print("  [*] Auto-Reconnect & Fault-Tolerant Session     ")
     print("  [*] Listening on http://localhost:8086          ")
     print("==================================================")
     web.run_app(app, host="127.0.0.1", port=8086)
