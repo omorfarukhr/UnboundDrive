@@ -84,3 +84,4 @@ app.*.symbols
 *.session-journal
 service_account.json
 credentials.json
+active_hashes.json

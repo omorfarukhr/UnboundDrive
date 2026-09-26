@@ -17,6 +17,50 @@ active_clients = {}
 # Active concurrency limiter: max 8 concurrent MTProto file uploads to prevent rate limit starvation
 UPLOAD_SEMAPHORE = asyncio.Semaphore(8)
 
+ACTIVE_HASHES_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "active_hashes.json")
+
+def get_saved_hash(phone: str) -> str:
+    digits = re.sub(r'\D', '', phone)
+    if not os.path.exists(ACTIVE_HASHES_FILE):
+        return ""
+    try:
+        with open(ACTIVE_HASHES_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data.get(digits, "")
+    except Exception as e:
+        print(f"[Telegram Bridge] get_saved_hash error: {e}", flush=True)
+        return ""
+
+def save_hash(phone: str, hash_val: str):
+    digits = re.sub(r'\D', '', phone)
+    data = {}
+    if os.path.exists(ACTIVE_HASHES_FILE):
+        try:
+            with open(ACTIVE_HASHES_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+    data[digits] = hash_val
+    try:
+        with open(ACTIVE_HASHES_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        print(f"[Telegram Bridge] Saved active hash for {phone}: {hash_val}", flush=True)
+    except Exception as e:
+        print(f"[Telegram Bridge] Failed to save active hash: {e}", flush=True)
+
+def remove_hash(phone: str):
+    digits = re.sub(r'\D', '', phone)
+    if os.path.exists(ACTIVE_HASHES_FILE):
+        try:
+            with open(ACTIVE_HASHES_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if digits in data:
+                del data[digits]
+                with open(ACTIVE_HASHES_FILE, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+        except Exception:
+            pass
+
 def clean_phone(phone: str) -> str:
     return re.sub(r'[^\d+]', '', phone).strip()
 
@@ -93,30 +137,85 @@ async def handle_send_code(request):
 
         phone, client = get_or_create_client(raw_phone)
         result = None
+        last_error = None
+        saved_hash = get_saved_hash(phone)
 
-        for attempt in range(4):
+        for attempt in range(3):
             try:
                 await ensure_connected(client)
-                print(f"[Telegram Bridge] Sending OTP request to {phone} (attempt {attempt+1})...")
+                print(f"[Telegram Bridge] Sending OTP request to {phone} (attempt {attempt+1})...", flush=True)
                 result = await client.send_code_request(phone)
                 break
-            except errors.AuthRestartError:
-                print(f"[Telegram Bridge] AuthRestartError (DC migration required). Reconnecting...")
-                await asyncio.sleep(1.2)
-                await ensure_connected(client)
-            except (ConnectionError, OSError, errors.RPCError):
-                print(f"[Telegram Bridge] Reconnecting to Telegram MTProto transport...")
+            except errors.SendCodeUnavailableError as e:
+                print(f"[Telegram Bridge] SendCodeUnavailableError: code already dispatched. Using active hash.", flush=True)
+                current_hash = saved_hash or active_clients.get(phone, {}).get("phone_code_hash")
+                if current_hash:
+                    active_clients[phone]["phone_code_hash"] = current_hash
+                    return web.json_response({
+                        "status": "ok",
+                        "phone_code_hash": current_hash,
+                        "message": "Verification code already sent to your Telegram app."
+                    }, headers=get_cors_headers())
+                last_error = e
+                break
+            except errors.AuthRestartError as e:
+                print(f"[Telegram Bridge] AuthRestartError: {e}", flush=True)
+                last_error = e
                 await asyncio.sleep(1.0)
                 await ensure_connected(client)
+            except (ConnectionError, OSError) as e:
+                print(f"[Telegram Bridge] Connection error: {e}", flush=True)
+                last_error = e
+                await asyncio.sleep(1.0)
+                await ensure_connected(client)
+            except errors.FloodWaitError as e:
+                print(f"[Telegram Bridge] FloodWaitError: wait {e.seconds}s", flush=True)
+                return web.json_response({
+                    "status": "error",
+                    "message": f"Telegram rate limit: Wait {e.seconds} seconds before requesting another code.",
+                    "wait_seconds": e.seconds
+                }, status=429, headers=get_cors_headers())
+            except errors.PhoneNumberInvalidError:
+                return web.json_response({
+                    "status": "error",
+                    "message": "Invalid phone number format for Telegram."
+                }, status=400, headers=get_cors_headers())
+            except Exception as e:
+                print(f"[Telegram Bridge] Unexpected send_code error: {type(e)} {e}", flush=True)
+                err_str = str(e).lower()
+                if "already used" in err_str or "options for this type" in err_str or "sendcodeunavailable" in err_str:
+                    current_hash = saved_hash or active_clients.get(phone, {}).get("phone_code_hash")
+                    if current_hash:
+                        print(f"[Telegram Bridge] Active hash found ({current_hash}), returning ok", flush=True)
+                        active_clients[phone]["phone_code_hash"] = current_hash
+                        return web.json_response({
+                            "status": "ok",
+                            "phone_code_hash": current_hash,
+                            "message": "Verification code already sent to your Telegram app."
+                        }, headers=get_cors_headers())
+                last_error = e
+                break
 
         if not result:
+            current_hash = saved_hash or active_clients.get(phone, {}).get("phone_code_hash")
+            if current_hash:
+                print(f"[Telegram Bridge] Fallback to saved hash {current_hash} for {phone}", flush=True)
+                active_clients[phone]["phone_code_hash"] = current_hash
+                return web.json_response({
+                    "status": "ok",
+                    "phone_code_hash": current_hash,
+                    "message": "Verification code already sent to your Telegram app."
+                }, headers=get_cors_headers())
+
+            err_msg = str(last_error) if last_error else "Connection to Telegram timed out. Please tap Continue again."
             return web.json_response(
-                {"status": "error", "message": "Connection to Telegram timed out. Please tap Continue again."},
+                {"status": "error", "message": err_msg},
                 status=500,
                 headers=get_cors_headers(),
             )
 
         active_clients[phone]["phone_code_hash"] = result.phone_code_hash
+        save_hash(phone, result.phone_code_hash)
         print(f"[Telegram Bridge] Real Telegram OTP dispatched to {phone} (Hash: {result.phone_code_hash})")
 
         return web.json_response({
@@ -156,11 +255,12 @@ async def handle_verify_code(request):
         await ensure_connected(client)
 
         if not phone_code_hash:
-            phone_code_hash = active_clients.get(phone, {}).get("phone_code_hash")
+            phone_code_hash = active_clients.get(phone, {}).get("phone_code_hash") or get_saved_hash(phone)
 
         try:
             user = await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
             print(f"[Telegram Bridge] Authenticated successfully as {user.first_name} ({user.id})")
+            remove_hash(phone)
 
             channel_id = await ensure_vault_channel(client)
             active_clients[phone]["vault_channel_id"] = channel_id
@@ -186,6 +286,7 @@ async def handle_verify_code(request):
                 headers=get_cors_headers(),
             )
         except errors.PhoneCodeExpiredError:
+            remove_hash(phone)
             return web.json_response(
                 {"status": "error", "message": "Verification code expired. Please request a new one."},
                 status=400,
