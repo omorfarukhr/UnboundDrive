@@ -29,7 +29,11 @@ class FileCard extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppColors.darkCard,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.darkBorder),
+            border: Border.all(
+              color: item.isPublic
+                  ? AppColors.success.withValues(alpha: 0.3)
+                  : AppColors.darkBorder,
+            ),
           ),
           padding: const EdgeInsets.all(12),
           child: Column(
@@ -66,13 +70,17 @@ class FileCard extends StatelessWidget {
                       if (value == 'download') onDownload?.call();
                     },
                     itemBuilder: (context) => [
-                      const PopupMenuItem(
+                      PopupMenuItem(
                         value: 'share',
                         child: Row(
                           children: [
-                            Icon(Icons.link_rounded, color: AppColors.accent, size: 18),
-                            SizedBox(width: 8),
-                            Text("Direct Web Link", style: TextStyle(color: AppColors.textLight)),
+                            Icon(
+                              item.isPublic ? Icons.public_rounded : Icons.lock_outline_rounded,
+                              color: item.isPublic ? AppColors.success : AppColors.accent,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 8),
+                            const Text("Share & Privacy", style: TextStyle(color: AppColors.textLight)),
                           ],
                         ),
                       ),
@@ -103,15 +111,44 @@ class FileCard extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
                     item.isFolder ? "Folder" : FileUtils.formatBytes(item.size),
                     style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
                   ),
-                  if (item.isEncrypted) ...[
-                    const SizedBox(width: 6),
-                    const Icon(Icons.lock_outline, color: AppColors.accent, size: 12),
-                  ],
+                  if (item.isPublic)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.success.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.public_rounded, color: AppColors.success, size: 10),
+                          SizedBox(width: 3),
+                          Text("Public", style: TextStyle(color: AppColors.success, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.accent.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.lock_rounded, color: AppColors.accent, size: 10),
+                          SizedBox(width: 3),
+                          Text("Private", style: TextStyle(color: AppColors.accent, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
                 ],
               ),
             ],
@@ -151,11 +188,39 @@ class FileCard extends StatelessWidget {
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (item.isEncrypted)
-            const Padding(
-              padding: EdgeInsets.only(right: 8.0),
-              child: Icon(Icons.lock_rounded, color: AppColors.accent, size: 16),
+          if (item.isPublic)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.success.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.public_rounded, color: AppColors.success, size: 12),
+                  SizedBox(width: 4),
+                  Text("Public Link", style: TextStyle(color: AppColors.success, fontSize: 11, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.lock_rounded, color: AppColors.accent, size: 12),
+                  SizedBox(width: 4),
+                  Text("Private", style: TextStyle(color: AppColors.accent, fontSize: 11, fontWeight: FontWeight.bold)),
+                ],
+              ),
             ),
+          const SizedBox(width: 4),
           IconButton(
             icon: const Icon(Icons.more_vert_rounded, color: AppColors.textMuted),
             onPressed: onShareDirect,

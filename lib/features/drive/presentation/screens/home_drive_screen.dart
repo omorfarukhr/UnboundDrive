@@ -5,6 +5,7 @@ import '../../domain/models/drive_item.dart';
 import '../controllers/drive_controller.dart';
 import '../widgets/file_card.dart';
 import '../widgets/storage_meter.dart';
+import '../widgets/share_privacy_dialog.dart';
 import '../../../backup/presentation/screens/backup_settings_screen.dart';
 import '../../../transfers/presentation/screens/transfer_center_screen.dart';
 
@@ -272,46 +273,18 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
   void _showShareDialog(DriveItem item) {
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppColors.darkCard,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Row(
-                children: [
-                  Icon(Icons.link_rounded, color: AppColors.accent),
-                  SizedBox(width: 8),
-                  Text("1-Click Direct Download Link", style: TextStyle(color: AppColors.textLight, fontWeight: FontWeight.bold, fontSize: 16)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              const Text("Anyone with this link can download this file via Chrome/Safari or IDM without a Telegram account.", style: TextStyle(color: AppColors.textMuted, fontSize: 13)),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(color: AppColors.darkSurface, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.darkBorder)),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(item.directShareUrl ?? "https://dl.unbounddrive.app/f/${item.id}", style: const TextStyle(color: AppColors.accent, fontSize: 13)),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.copy_rounded, color: AppColors.textLight, size: 18),
-                      onPressed: () {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Link copied to clipboard!")));
-                      },
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-            ],
-          ),
+        return SharePrivacyDialog(
+          item: item,
+          onPrivacyChanged: (privacy) {
+            ref.read(driveControllerProvider.notifier).setPrivacy(item.id, privacy);
+            final message = privacy == FilePrivacy.publicWithLink
+                ? "File is now Public with link."
+                : "File is now Private. Public links revoked.";
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+          },
         );
       },
     );

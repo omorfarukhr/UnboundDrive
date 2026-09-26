@@ -1,3 +1,8 @@
+enum FilePrivacy {
+  privateOnly,
+  publicWithLink,
+}
+
 class DriveItem {
   final String id;
   final String name;
@@ -9,6 +14,9 @@ class DriveItem {
   final int? telegramMessageId;
   final String? directShareUrl;
   final String? localCachedPath;
+  final FilePrivacy privacy;
+  final bool isLinkActive;
+  final int downloadCount;
 
   const DriveItem({
     required this.id,
@@ -21,7 +29,12 @@ class DriveItem {
     this.telegramMessageId,
     this.directShareUrl,
     this.localCachedPath,
+    this.privacy = FilePrivacy.privateOnly,
+    this.isLinkActive = false,
+    this.downloadCount = 0,
   });
+
+  bool get isPublic => privacy == FilePrivacy.publicWithLink && isLinkActive;
 
   DriveItem copyWith({
     String? id,
@@ -34,6 +47,9 @@ class DriveItem {
     int? telegramMessageId,
     String? directShareUrl,
     String? localCachedPath,
+    FilePrivacy? privacy,
+    bool? isLinkActive,
+    int? downloadCount,
   }) {
     return DriveItem(
       id: id ?? this.id,
@@ -46,6 +62,9 @@ class DriveItem {
       telegramMessageId: telegramMessageId ?? this.telegramMessageId,
       directShareUrl: directShareUrl ?? this.directShareUrl,
       localCachedPath: localCachedPath ?? this.localCachedPath,
+      privacy: privacy ?? this.privacy,
+      isLinkActive: isLinkActive ?? this.isLinkActive,
+      downloadCount: downloadCount ?? this.downloadCount,
     );
   }
 }

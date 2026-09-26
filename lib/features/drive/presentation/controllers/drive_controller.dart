@@ -45,6 +45,8 @@ class DriveController extends StateNotifier<List<DriveItem>> {
             extension: "mp4",
             isEncrypted: true,
             uploadDate: DateTime.now(),
+            privacy: FilePrivacy.publicWithLink,
+            isLinkActive: true,
             directShareUrl: "https://dl.unbounddrive.app/f/ca4k99",
           ),
           DriveItem(
@@ -53,7 +55,8 @@ class DriveController extends StateNotifier<List<DriveItem>> {
             size: 4500000,
             extension: "pdf",
             uploadDate: DateTime.now(),
-            directShareUrl: "https://dl.unbounddrive.app/f/fin2026",
+            privacy: FilePrivacy.privateOnly,
+            isLinkActive: false,
           ),
           DriveItem(
             id: "5",
@@ -61,6 +64,8 @@ class DriveController extends StateNotifier<List<DriveItem>> {
             size: 8900000,
             extension: "heic",
             uploadDate: DateTime.now(),
+            privacy: FilePrivacy.publicWithLink,
+            isLinkActive: true,
             directShareUrl: "https://dl.unbounddrive.app/f/sunset",
           ),
         ]);
@@ -141,5 +146,21 @@ class DriveController extends StateNotifier<List<DriveItem>> {
   /// Deletes an item from the drive
   void deleteItem(String id) {
     state = state.where((item) => item.id != id).toList();
+  }
+
+  /// Sets privacy for a file (PrivateOnly or PublicWithLink)
+  void setPrivacy(String id, FilePrivacy privacy) {
+    state = state.map((item) {
+      if (item.id == id) {
+        final isPublic = privacy == FilePrivacy.publicWithLink;
+        final shareUrl = item.directShareUrl ?? "https://dl.unbounddrive.app/f/${item.id.replaceAll('file_', '')}";
+        return item.copyWith(
+          privacy: privacy,
+          isLinkActive: isPublic,
+          directShareUrl: shareUrl,
+        );
+      }
+      return item;
+    }).toList();
   }
 }
