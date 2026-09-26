@@ -1,0 +1,63 @@
+name: unbounddrive
+description: "UnboundDrive - Infinite, subscription-free mobile cloud drive powered by Telegram."
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management & Architecture
+  flutter_riverpod: ^2.5.1
+  riverpod_annotation: ^2.3.5
+
+  # UI, Icons & Typography
+  google_fonts: ^6.2.1
+  cupertino_icons: ^1.0.8
+  flutter_animate: ^4.5.0
+  shimmer: ^3.0.0
+  percent_indicator: ^4.2.3
+
+  # Local Storage & Database
+  hive: ^2.2.3
+  hive_flutter: ^1.1.0
+  flutter_secure_storage: ^9.2.2
+  shared_preferences: ^2.2.3
+
+  # File Management & Device
+  path_provider: ^2.1.3
+  path: ^1.9.0
+  file_picker: ^8.0.3
+  image_picker: ^1.1.1
+  open_filex: ^4.4.0
+  permission_handler: ^11.3.1
+
+  # Background Sync & WorkManager
+  workmanager: ^0.5.2
+
+  # Networking & Stream Proxy
+  dio: ^5.4.3+1
+  http: ^1.2.1
+
+  # Security & Zero-Knowledge Encryption
+  crypto: ^3.0.3
+  encrypt: ^5.0.3
+
+  # Utilities
+  intl: ^0.19.0
+  uuid: ^4.4.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.2
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/images/
+    - assets/icons/
