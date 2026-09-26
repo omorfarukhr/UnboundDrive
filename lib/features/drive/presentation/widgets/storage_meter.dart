@@ -6,7 +6,7 @@ class StorageMeter extends StatelessWidget {
 
   const StorageMeter({
     super.key,
-    this.totalBackedUp = "28.4 GB",
+    this.totalBackedUp = "0 B",
   });
 
   @override
@@ -29,27 +29,34 @@ class StorageMeter extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(10),
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withValues(alpha: 0.2),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: const Icon(Icons.all_inclusive_rounded, color: AppColors.accent, size: 20),
                     ),
-                    child: const Icon(Icons.all_inclusive_rounded, color: AppColors.accent, size: 20),
-                  ),
-                  const SizedBox(width: 10),
-                  const Text(
-                    "Cloud Capacity",
-                    style: TextStyle(
-                      color: AppColors.textLight,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
+                    const SizedBox(width: 10),
+                    const Flexible(
+                      child: Text(
+                        "Cloud Capacity",
+                        style: TextStyle(
+                          color: AppColors.textLight,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 16,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
@@ -58,6 +65,7 @@ class StorageMeter extends StatelessWidget {
                   border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
                 ),
                 child: const Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.check_circle_outline, color: AppColors.success, size: 14),
                     SizedBox(width: 4),
@@ -75,20 +83,24 @@ class StorageMeter extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 14),
-          const Row(
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                "Unlimited ∞ Storage",
-                style: TextStyle(
-                  color: AppColors.textLight,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
+              const Expanded(
+                child: Text(
+                  "Unlimited ∞ Storage",
+                  style: TextStyle(
+                    color: AppColors.textLight,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
               Text(
-                "28.4 GB Stored",
-                style: TextStyle(
+                "$totalBackedUp Stored",
+                style: const TextStyle(
                   color: AppColors.accent,
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
@@ -98,18 +110,21 @@ class StorageMeter extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           ClipRRect(
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(8),
             child: const LinearProgressIndicator(
-              value: 0.15,
-              minHeight: 8,
-              backgroundColor: Color(0xFF334155),
+              value: 0.05, // Infinite drive: Always low percentage
+              backgroundColor: AppColors.darkBorder,
               valueColor: AlwaysStoppedAnimation<Color>(AppColors.accent),
+              minHeight: 8,
             ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
           const Text(
-            "Encrypted & securely synced to your private Telegram cloud.",
-            style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+            "Powered by Telegram Distributed Shards • No 15GB Cap",
+            style: TextStyle(
+              color: AppColors.textMuted,
+              fontSize: 12,
+            ),
           ),
         ],
       ),
