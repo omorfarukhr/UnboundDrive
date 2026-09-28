@@ -45,6 +45,10 @@ class SecureVaultManifest {
               "privacy": i.privacy.name,
               "isLinkActive": i.isLinkActive,
               "downloadCount": i.downloadCount,
+              "parentFolderId": i.parentFolderId,
+              "sha256Checksum": i.sha256Checksum,
+              "previewText": i.previewText,
+              "thumbnailBase64": i.thumbnailBytes != null ? base64Encode(i.thumbnailBytes!) : null,
               "chunks": i.chunks?.map((c) => c.toJson()).toList(),
             }).toList(),
       };
@@ -60,6 +64,7 @@ class SecureVaultManifest {
 
       final chunksRaw = (map["chunks"] as List<dynamic>?) ?? [];
       final parsedChunks = chunksRaw.map((c) => ChunkRecord.fromJson(c as Map<String, dynamic>)).toList();
+      final thumbB64 = map["thumbnailBase64"] as String?;
 
       return DriveItem(
         id: map["id"] as String,
@@ -74,6 +79,10 @@ class SecureVaultManifest {
         privacy: privacy,
         isLinkActive: map["isLinkActive"] as bool? ?? false,
         downloadCount: map["downloadCount"] as int? ?? 0,
+        parentFolderId: map["parentFolderId"] as String?,
+        sha256Checksum: map["sha256Checksum"] as String?,
+        previewText: map["previewText"] as String?,
+        thumbnailBytes: thumbB64 != null ? base64Decode(thumbB64) : null,
         chunks: parsedChunks.isEmpty ? null : parsedChunks,
       );
     }).toList();

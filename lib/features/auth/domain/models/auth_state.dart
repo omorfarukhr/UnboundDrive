@@ -16,6 +16,9 @@ class AuthState {
   final String? errorMessage;
   final int? vaultChannelId;
   final String? userName;
+  final String? lastName;
+  final String? username;
+  final String? telegramUserId;
 
   const AuthState({
     this.status = AuthStatus.initial,
@@ -24,6 +27,9 @@ class AuthState {
     this.errorMessage,
     this.vaultChannelId,
     this.userName,
+    this.lastName,
+    this.username,
+    this.telegramUserId,
   });
 
   bool get isLoading =>
@@ -33,6 +39,16 @@ class AuthState {
 
   bool get isAuthenticated => status == AuthStatus.authenticated;
 
+  String get displayName {
+    final first = userName ?? "";
+    final last = lastName ?? "";
+    final full = "$first $last".trim();
+    if (full.isNotEmpty) return full;
+    if (username != null && username!.isNotEmpty) return "@$username";
+    if (phoneNumber != null && phoneNumber!.isNotEmpty) return phoneNumber!;
+    return "Telegram User";
+  }
+
   AuthState copyWith({
     AuthStatus? status,
     String? phoneNumber,
@@ -40,6 +56,9 @@ class AuthState {
     String? errorMessage,
     int? vaultChannelId,
     String? userName,
+    String? lastName,
+    String? username,
+    String? telegramUserId,
   }) {
     return AuthState(
       status: status ?? this.status,
@@ -48,6 +67,9 @@ class AuthState {
       errorMessage: errorMessage ?? this.errorMessage,
       vaultChannelId: vaultChannelId ?? this.vaultChannelId,
       userName: userName ?? this.userName,
+      lastName: lastName ?? this.lastName,
+      username: username ?? this.username,
+      telegramUserId: telegramUserId ?? this.telegramUserId,
     );
   }
 }

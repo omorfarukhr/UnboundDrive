@@ -81,6 +81,7 @@ class VaultStorageService {
             final headers = <String, String>{
               "Content-Type": "application/octet-stream",
               "X-Chunk-Index": chunkIdx.toString(),
+              "X-File-Name": fileName,
             };
             if (userPhone != null && userPhone.isNotEmpty) {
               headers["X-Phone"] = userPhone;

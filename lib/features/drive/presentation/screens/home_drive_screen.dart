@@ -12,6 +12,7 @@ import '../widgets/storage_meter.dart';
 import '../widgets/share_privacy_dialog.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../backup/presentation/screens/backup_settings_screen.dart';
+import '../../../auth/presentation/screens/login_screen.dart';
 import '../../../transfers/presentation/screens/transfer_center_screen.dart';
 import '../../../transfers/presentation/widgets/active_upload_hud.dart';
 import '../../../transfers/data/active_upload_notifier.dart';
@@ -436,31 +437,166 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
   }
 
   Widget _buildSettingsView() {
+    final auth = ref.watch(authControllerProvider);
+    final displayName = auth.displayName.isNotEmpty ? auth.displayName : "Telegram User";
+    final initialLetter = displayName.isNotEmpty ? displayName[0].toUpperCase() : "U";
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // Telegram Account Card
         Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
-            color: AppColors.darkCard,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.darkBorder),
+            gradient: LinearGradient(
+              colors: [
+                AppColors.darkCard,
+                AppColors.primary.withOpacity(0.12),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: AppColors.primaryLight.withOpacity(0.3)),
           ),
-          child: const Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 28,
-                backgroundColor: AppColors.primary,
-                child: Icon(Icons.person_rounded, color: Colors.white, size: 32),
-              ),
-              SizedBox(width: 14),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Row(
                 children: [
-                  Text("UnboundDrive Active Vault", style: TextStyle(color: AppColors.textLight, fontWeight: FontWeight.bold, fontSize: 16)),
-                  SizedBox(height: 2),
-                  Text("Infinite Telegram Distributed Cloud", style: TextStyle(color: AppColors.accent, fontSize: 13)),
+                  CircleAvatar(
+                    radius: 28,
+                    backgroundColor: AppColors.primary,
+                    child: Text(
+                      initialLetter,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 24,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                displayName,
+                                style: const TextStyle(
+                                  color: AppColors.textLight,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 17,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            const Icon(
+                              Icons.verified_rounded,
+                              color: AppColors.accent,
+                              size: 18,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        if (auth.username != null && auth.username!.isNotEmpty)
+                          Text(
+                            "@${auth.username}",
+                            style: const TextStyle(
+                              color: AppColors.accent,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        const SizedBox(height: 2),
+                        Text(
+                          auth.phoneNumber ?? "Connected via MTProto",
+                          style: const TextStyle(
+                            color: AppColors.textMuted,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
+              ),
+              const SizedBox(height: 14),
+              const Divider(color: AppColors.darkBorder),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: AppColors.success,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Text(
+                    "Connected to Telegram Cloud",
+                    style: TextStyle(
+                      color: AppColors.success,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (auth.telegramUserId != null)
+                    Text(
+                      "ID: ${auth.telegramUserId}",
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 11,
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.darkBg.withOpacity(0.6),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.cloud_done_rounded, color: AppColors.primaryLight, size: 16),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        "Vault Destination: Saved Messages & Personal Channel (Unlimited)",
+                        style: TextStyle(
+                          color: AppColors.textLight.withOpacity(0.85),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.logout_rounded, size: 18, color: Colors.redAccent),
+                  label: const Text(
+                    "Log Out from Telegram",
+                    style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w600),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.redAccent),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () => _confirmLogout(context),
+                ),
               ),
             ],
           ),
@@ -473,6 +609,47 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
         _buildSettingTile(Icons.fingerprint_rounded, "Hardware Keystore / Secure Enclave", "Android Knox / Titan M hardware bound", Colors.cyan),
         _buildSettingTile(Icons.speed_rounded, "MTProto Load-Balanced Pool", "Adaptive 2-8 parallel worker streams", AppColors.primaryLight),
       ],
+    );
+  }
+
+  void _confirmLogout(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.darkCard,
+        title: const Text(
+          "Log Out from Telegram?",
+          style: TextStyle(color: AppColors.textLight, fontWeight: FontWeight.bold),
+        ),
+        content: const Text(
+          "Are you sure you want to log out? Your uploaded files remain safe and encrypted in your Telegram Cloud.",
+          style: TextStyle(color: AppColors.textMuted),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel", style: TextStyle(color: AppColors.textMuted)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await ref.read(authControllerProvider.notifier).logout();
+              await ref.read(driveControllerProvider.notifier).clearCache();
+              if (mounted) {
+                Navigator.of(context).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  (route) => false,
+                );
+              }
+            },
+            child: const Text("Log Out"),
+          ),
+        ],
+      ),
     );
   }
 

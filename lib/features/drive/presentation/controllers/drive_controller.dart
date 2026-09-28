@@ -6,6 +6,7 @@ import 'package:encrypt/encrypt.dart' as enc;
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../../../core/constants/sample_vault_data.dart';
 import '../../../../core/security/encrypted_vault_storage.dart';
 import '../../../../core/security/hardware_security_manager.dart';
@@ -34,7 +35,23 @@ class DriveController extends StateNotifier<List<DriveItem>> {
   final ActiveUploadNotifier _uploadNotifier;
 
   DriveController(this._storageService, this._uploadNotifier)
-      : super(SampleVaultData.getInitialRealDriveItems());
+      : super(SampleVaultData.getInitialRealDriveItems()) {
+    _loadPersistedItems();
+  }
+
+  Future<void> _loadPersistedItems() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedJsonStr = prefs.getString("ubd_cached_vault_ledger");
+      if (savedJsonStr != null && savedJsonStr.isNotEmpty) {
+        final data = jsonDecode(savedJsonStr) as Map<String, dynamic>;
+        final manifest = SecureVaultManifest.fromJson(data);
+        if (manifest.items.isNotEmpty) {
+          state = manifest.items;
+        }
+      }
+    } catch (_) {}
+  }
 
   /// Derives master key using hardware salt and Argon2id in a background isolate
   Future<enc.Key> _deriveMasterKey(String masterPassword) async {
@@ -261,11 +278,13 @@ class DriveController extends StateNotifier<List<DriveItem>> {
       parentFolderId: parentFolderId,
     );
     state = [newFolder, ...state];
+    _persistLedgerCache();
   }
 
   /// Deletes an item from the drive
   void deleteItem(String id) {
     state = state.where((item) => item.id != id).toList();
+    _persistLedgerCache();
   }
 
   /// Sets privacy for a file (PrivateOnly or PublicWithLink)
@@ -282,10 +301,32 @@ class DriveController extends StateNotifier<List<DriveItem>> {
       }
       return item;
     }).toList();
+    _persistLedgerCache();
+  }
+
+  Future<void> _persistLedgerCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final manifest = SecureVaultManifest(
+        lastUpdated: DateTime.now(),
+        channelId: -100982736412,
+        items: state,
+      );
+      await prefs.setString("ubd_cached_vault_ledger", jsonEncode(manifest.toJson()));
+    } catch (_) {}
+  }
+
+  Future<void> clearCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove("ubd_cached_vault_ledger");
+      state = SampleVaultData.getInitialRealDriveItems();
+    } catch (_) {}
   }
 
   Future<void> _persistCurrentState(enc.Key masterKey) async {
     try {
+      await _persistLedgerCache();
       final manifest = SecureVaultManifest(
         lastUpdated: DateTime.now(),
         channelId: -100982736412,

@@ -277,6 +277,7 @@ async def handle_verify_code(request):
                 "user": {
                     "id": user.id,
                     "first_name": user.first_name or "",
+                    "last_name": user.last_name or "",
                     "username": user.username or "",
                     "phone": phone,
                     "vault_channel_id": channel_id,
@@ -327,6 +328,9 @@ async def handle_verify_2fa(request):
             "user": {
                 "id": user.id,
                 "first_name": user.first_name or "",
+                "last_name": user.last_name or "",
+                "username": user.username or "",
+                "phone": phone,
                 "vault_channel_id": channel_id,
             }
         }, headers=get_cors_headers())
@@ -342,6 +346,31 @@ async def handle_verify_2fa(request):
             status=500,
             headers=get_cors_headers(),
         )
+
+async def handle_get_me(request):
+    phone, client = get_client_for_request(request)
+    if not client:
+        return web.json_response({"status": "unauthorized"}, status=401, headers=get_cors_headers())
+    try:
+        await ensure_connected(client)
+        if await client.is_user_authorized():
+            me = await client.get_me()
+            channel_id = active_clients.get(phone, {}).get("vault_channel_id")
+            return web.json_response({
+                "status": "authenticated",
+                "user": {
+                    "id": me.id,
+                    "first_name": me.first_name or "",
+                    "last_name": me.last_name or "",
+                    "username": me.username or "",
+                    "phone": me.phone or phone,
+                    "vault_channel_id": channel_id,
+                }
+            }, headers=get_cors_headers())
+        else:
+            return web.json_response({"status": "unauthorized"}, status=401, headers=get_cors_headers())
+    except Exception as e:
+        return web.json_response({"status": "error", "message": str(e)}, status=500, headers=get_cors_headers())
 
 async def ensure_vault_channel(client):
     """Finds existing UnboundDrive Vault channel or creates a new strictly private channel."""
@@ -371,6 +400,8 @@ async def handle_upload_chunk(request):
         if not chunk_bytes:
             return web.json_response({"status": "error", "message": "Empty chunk payload."}, status=400, headers=get_cors_headers())
 
+        file_name = request.headers.get("X-File-Name", f"chunk_{len(chunk_bytes)}.ubd")
+
         if client:
             try:
                 await ensure_connected(client)
@@ -383,16 +414,27 @@ async def handle_upload_chunk(request):
 
                     async with UPLOAD_SEMAPHORE:
                         chunk_file = io.BytesIO(chunk_bytes)
-                        chunk_file.name = f"chunk_{len(chunk_bytes)}.ubd"
+                        chunk_file.name = file_name
 
-                        message = await client.send_file(
-                            channel_id or "me",
-                            file=chunk_file,
-                            caption="#unbound_chunk",
-                            force_document=True,
-                        )
+                        destination = channel_id or "me"
+                        try:
+                            message = await client.send_file(
+                                destination,
+                                file=chunk_file,
+                                caption=f"#unbound_chunk {file_name}",
+                                force_document=True,
+                            )
+                        except Exception as dest_err:
+                            print(f"[Telegram Bridge] Upload to destination '{destination}' failed ({dest_err}), falling back to 'me' (Saved Messages)", flush=True)
+                            chunk_file.seek(0)
+                            message = await client.send_file(
+                                "me",
+                                file=chunk_file,
+                                caption=f"#unbound_chunk {file_name}",
+                                force_document=True,
+                            )
 
-                        print(f"[Telegram Bridge] Uploaded real MTProto chunk to Telegram (msg_id: {message.id})", flush=True)
+                        print(f"[Telegram Bridge] Uploaded real MTProto chunk to Telegram (msg_id: {message.id}, file: {file_name})", flush=True)
                         return web.json_response({
                             "status": "ok",
                             "telegram_message_id": message.id,
@@ -515,6 +557,7 @@ app.router.add_route("OPTIONS", "/{tail:.*}", handle_options)
 app.router.add_post("/api/auth/send_code", handle_send_code)
 app.router.add_post("/api/auth/verify_code", handle_verify_code)
 app.router.add_post("/api/auth/verify_2fa", handle_verify_2fa)
+app.router.add_get("/api/auth/me", handle_get_me)
 app.router.add_post("/api/drive/upload_chunk", handle_upload_chunk)
 app.router.add_get("/api/drive/download_chunk", handle_download_chunk)
 app.router.add_post("/api/drive/sync_manifest", handle_sync_manifest)

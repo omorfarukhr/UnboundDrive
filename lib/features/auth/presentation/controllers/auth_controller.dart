@@ -14,7 +14,16 @@ final authControllerProvider = StateNotifierProvider<AuthController, AuthState>(
 class AuthController extends StateNotifier<AuthState> {
   final TelegramAuthService _authService;
 
-  AuthController(this._authService) : super(const AuthState());
+  AuthController(this._authService) : super(const AuthState()) {
+    checkActiveSession();
+  }
+
+  Future<void> checkActiveSession() async {
+    final restored = await _authService.restoreSession();
+    if (restored != null) {
+      state = restored;
+    }
+  }
 
   Future<void> sendCode({
     required String phoneNumber,

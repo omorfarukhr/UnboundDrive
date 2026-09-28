@@ -200,5 +200,37 @@ void main() {
       expect(journal.progress, equals(1.0));
       expect(journal.isComplete, isTrue);
     });
+
+    test('SecureVaultManifest serializes all rich metadata (thumbnail, sha256, folder, preview)', () {
+      final sampleThumb = Uint8List.fromList([1, 2, 3, 4, 5]);
+      final item = DriveItem(
+        id: "test_item_1",
+        name: "document.pdf",
+        size: 1024,
+        extension: "pdf",
+        uploadDate: DateTime(2026, 1, 1),
+        parentFolderId: "folder_123",
+        sha256Checksum: "abcd1234efgh",
+        previewText: "Sample preview content",
+        thumbnailBytes: sampleThumb,
+      );
+
+      final manifest = SecureVaultManifest(
+        lastUpdated: DateTime(2026, 1, 1),
+        channelId: -100123456789,
+        items: [item],
+      );
+
+      final json = manifest.toJson();
+      final restored = SecureVaultManifest.fromJson(json);
+
+      expect(restored.items.length, equals(1));
+      final rItem = restored.items.first;
+      expect(rItem.id, equals("test_item_1"));
+      expect(rItem.parentFolderId, equals("folder_123"));
+      expect(rItem.sha256Checksum, equals("abcd1234efgh"));
+      expect(rItem.previewText, equals("Sample preview content"));
+      expect(rItem.thumbnailBytes, equals(sampleThumb));
+    });
   });
 }
