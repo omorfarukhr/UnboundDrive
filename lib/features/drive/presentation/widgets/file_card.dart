@@ -23,7 +23,9 @@ class FileCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final ext = item.extension.toLowerCase();
     final isImage = ["jpg", "jpeg", "png", "webp", "gif", "heic"].contains(ext);
+    final isVideo = ["mp4", "mkv", "avi", "mov", "webm", "m4v"].contains(ext);
     final hasRealImage = isImage && item.rawBytes != null && item.rawBytes!.isNotEmpty;
+    final hasThumbnail = item.thumbnailBytes != null && item.thumbnailBytes!.isNotEmpty;
 
     if (isGrid) {
       return InkWell(
@@ -114,11 +116,37 @@ class FileCard extends StatelessWidget {
                 ],
               ),
               const Spacer(),
-              if (hasRealImage)
+              if (hasThumbnail)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: Container(
-                    height: 52,
+                    height: 54,
+                    width: double.infinity,
+                    color: Colors.black,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      fit: StackFit.expand,
+                      children: [
+                        Image.memory(
+                          item.thumbnailBytes!,
+                          fit: BoxFit.cover,
+                        ),
+                        if (isVideo)
+                          Container(
+                            color: Colors.black38,
+                            child: const Center(
+                              child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 28),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                )
+              else if (hasRealImage)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    height: 54,
                     width: double.infinity,
                     color: Colors.black26,
                     child: Image.memory(
@@ -126,8 +154,27 @@ class FileCard extends StatelessWidget {
                       fit: BoxFit.cover,
                     ),
                   ),
+                )
+              else if (isVideo)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    height: 54,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.purple.shade900.withValues(alpha: 0.6),
+                          Colors.blue.shade900.withValues(alpha: 0.4),
+                        ],
+                      ),
+                    ),
+                    child: const Center(
+                      child: Icon(Icons.play_circle_fill_rounded, color: AppColors.accent, size: 28),
+                    ),
+                  ),
                 ),
-              if (hasRealImage) const SizedBox(height: 6),
+              if (hasThumbnail || hasRealImage || isVideo) const SizedBox(height: 6),
               Text(
                 item.name,
                 maxLines: 1,
@@ -165,20 +212,44 @@ class FileCard extends StatelessWidget {
     return ListTile(
       onTap: onTap,
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      leading: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: item.isFolder
-              ? AppColors.primary.withValues(alpha: 0.2)
-              : FileUtils.getFileColor(item.extension).withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(
-          item.isFolder ? Icons.folder_rounded : FileUtils.getFileIcon(item.extension),
-          color: item.isFolder ? AppColors.primaryLight : FileUtils.getFileColor(item.extension),
-          size: 22,
-        ),
-      ),
+      leading: (hasThumbnail || hasRealImage)
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: SizedBox(
+                width: 44,
+                height: 44,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.memory(
+                      hasThumbnail ? item.thumbnailBytes! : item.rawBytes!,
+                      fit: BoxFit.cover,
+                    ),
+                    if (isVideo)
+                      Container(
+                        color: Colors.black38,
+                        child: const Center(
+                          child: Icon(Icons.play_arrow_rounded, color: Colors.white, size: 22),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            )
+          : Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: item.isFolder
+                    ? AppColors.primary.withValues(alpha: 0.2)
+                    : FileUtils.getFileColor(item.extension).withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                item.isFolder ? Icons.folder_rounded : FileUtils.getFileIcon(item.extension),
+                color: item.isFolder ? AppColors.primaryLight : FileUtils.getFileColor(item.extension),
+                size: 22,
+              ),
+            ),
       title: Text(
         item.name,
         maxLines: 1,

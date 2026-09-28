@@ -146,7 +146,7 @@ void main() {
 
   group('Scalability & Load Balancing Pool Tests', () {
     test('LoadBalancedTransferPool processes chunks with concurrency limit', () async {
-      final pool = LoadBalancedTransferPool(maxConcurrentWorkers: 2);
+      final pool = LoadBalancedTransferPool(maxConcurrentWorkers: 2, enableAdaptiveTuning: false);
       final dummyChunks = List<Uint8List>.generate(4, (i) => Uint8List.fromList([i]));
 
       int activeAtPeak = 0;

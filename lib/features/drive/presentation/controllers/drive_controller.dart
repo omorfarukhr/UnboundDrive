@@ -12,6 +12,8 @@ import '../../../../core/security/hardware_security_manager.dart';
 import '../../../../core/security/isolate_crypto_worker.dart';
 import '../../../../core/security/secure_vault_manifest.dart';
 import '../../../../core/security/zero_knowledge_crypto.dart';
+import '../../../../core/utils/thumbnail/thumbnail_helper.dart';
+import '../../../transfers/data/active_upload_notifier.dart';
 import '../../../transfers/data/transfer_manager.dart';
 import '../../data/vault_storage_service.dart';
 import '../../domain/models/drive_item.dart';
@@ -23,13 +25,15 @@ final vaultStorageServiceProvider = Provider<VaultStorageService>((ref) {
 
 final driveControllerProvider = StateNotifierProvider<DriveController, List<DriveItem>>((ref) {
   final service = ref.watch(vaultStorageServiceProvider);
-  return DriveController(service);
+  final uploadNotifier = ref.watch(activeUploadProvider.notifier);
+  return DriveController(service, uploadNotifier);
 });
 
 class DriveController extends StateNotifier<List<DriveItem>> {
   final VaultStorageService _storageService;
+  final ActiveUploadNotifier _uploadNotifier;
 
-  DriveController(this._storageService)
+  DriveController(this._storageService, this._uploadNotifier)
       : super(SampleVaultData.getInitialRealDriveItems());
 
   /// Derives master key using hardware salt and Argon2id in a background isolate
@@ -94,10 +98,32 @@ class DriveController extends StateNotifier<List<DriveItem>> {
       if (bytes.isEmpty) continue;
 
       final fileName = file.name;
+      final ext = fileName.contains('.') ? fileName.split('.').last.toLowerCase() : '';
+
+      _uploadNotifier.startUpload(fileName: fileName, totalBytes: bytes.length);
+
+      // Extract real video thumbnail if it's a video file
+      Uint8List? thumbnailBytes;
+      final isVideo = ['mp4', 'webm', 'mov', 'mkv', 'avi', 'm4v'].contains(ext);
+      final isImage = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic'].contains(ext);
+
+      if (isVideo) {
+        _uploadNotifier.updateProgress(
+          progress: 0.15,
+          bytesTransferred: 0,
+          speed: "Generating...",
+          stage: "🎬 Extracting Real Video Thumbnail...",
+        );
+        try {
+          thumbnailBytes = await ThumbnailHelper.generateVideoThumbnail(bytes, ext);
+        } catch (_) {}
+      } else if (isImage) {
+        thumbnailBytes = bytes;
+      }
+
       final fileHash = await IsolateCryptoWorker.computeSha256Checksum(bytes);
 
       String? previewText;
-      final ext = fileName.contains('.') ? fileName.split('.').last.toLowerCase() : '';
       if (['txt', 'md', 'json', 'csv', 'dart', 'py', 'html', 'js', 'xml', 'log'].contains(ext) && bytes.isNotEmpty) {
         try {
           previewText = utf8.decode(bytes);
@@ -111,6 +137,14 @@ class DriveController extends StateNotifier<List<DriveItem>> {
         channelId: -100982736412,
         userPhone: userPhone,
         enableEncryption: true,
+        onProgress: (progress, bytesUploaded, speed, stage) {
+          _uploadNotifier.updateProgress(
+            progress: progress,
+            bytesTransferred: bytesUploaded,
+            speed: speed,
+            stage: stage,
+          );
+        },
       );
 
       final newItem = uploadedItem.copyWith(
@@ -118,9 +152,11 @@ class DriveController extends StateNotifier<List<DriveItem>> {
         previewText: previewText,
         sha256Checksum: fileHash,
         parentFolderId: targetFolderId,
+        thumbnailBytes: thumbnailBytes,
       );
 
       state = [newItem, ...state];
+      _uploadNotifier.completeUpload();
 
       // Automatically persist to sandboxed encrypted vault ledger
       await _persistCurrentState(masterKey);
@@ -139,8 +175,23 @@ class DriveController extends StateNotifier<List<DriveItem>> {
 
     final bytes = await media.readAsBytes();
     final fileName = media.name;
-    final fileHash = await IsolateCryptoWorker.computeSha256Checksum(bytes);
+    final ext = fileName.contains('.') ? fileName.split('.').last.toLowerCase() : '';
 
+    _uploadNotifier.startUpload(fileName: fileName, totalBytes: bytes.length);
+
+    Uint8List? thumbnailBytes;
+    final isVideo = ['mp4', 'webm', 'mov', 'mkv', 'avi', 'm4v'].contains(ext);
+    final isImage = ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic'].contains(ext);
+
+    if (isVideo) {
+      try {
+        thumbnailBytes = await ThumbnailHelper.generateVideoThumbnail(bytes, ext);
+      } catch (_) {}
+    } else if (isImage) {
+      thumbnailBytes = bytes;
+    }
+
+    final fileHash = await IsolateCryptoWorker.computeSha256Checksum(bytes);
     final masterKey = await _deriveMasterKey(masterPassword);
 
     final uploadedItem = await _storageService.uploadFile(
@@ -150,15 +201,25 @@ class DriveController extends StateNotifier<List<DriveItem>> {
       channelId: -100982736412,
       userPhone: userPhone,
       enableEncryption: true,
+      onProgress: (progress, bytesUploaded, speed, stage) {
+        _uploadNotifier.updateProgress(
+          progress: progress,
+          bytesTransferred: bytesUploaded,
+          speed: speed,
+          stage: stage,
+        );
+      },
     );
 
     final newItem = uploadedItem.copyWith(
       rawBytes: bytes,
       sha256Checksum: fileHash,
       parentFolderId: targetFolderId,
+      thumbnailBytes: thumbnailBytes,
     );
 
     state = [newItem, ...state];
+    _uploadNotifier.completeUpload();
     await _persistCurrentState(masterKey);
   }
 

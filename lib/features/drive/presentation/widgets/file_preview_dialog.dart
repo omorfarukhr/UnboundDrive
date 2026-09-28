@@ -4,6 +4,7 @@ import '../../../../app/theme/app_colors.dart';
 import '../../../../core/utils/file_download_helper.dart';
 import '../../../../core/utils/file_utils.dart';
 import '../../domain/models/drive_item.dart';
+import 'video_player/real_video_player.dart';
 
 class FilePreviewDialog extends StatefulWidget {
   final DriveItem item;
@@ -273,69 +274,46 @@ class _FilePreviewDialogState extends State<FilePreviewDialog> {
         );
       }
     } else if (isVideo) {
+      if (item.rawBytes != null && item.rawBytes!.isNotEmpty) {
+        return RealVideoPlayerWidget(
+          videoId: item.id,
+          videoBytes: item.rawBytes!,
+          fileName: item.name,
+          extension: item.extension,
+        );
+      }
+
       return Container(
         height: 260,
         color: Colors.black,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.8),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Text(
-                    "4K ULTRA HD • 60 FPS",
-                    style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                  ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.red.withValues(alpha: 0.8),
+                  borderRadius: BorderRadius.circular(6),
                 ),
-                const SizedBox(height: 16),
-                IconButton(
-                  iconSize: 56,
-                  icon: Icon(
-                    _isPlaying ? Icons.pause_circle_filled_rounded : Icons.play_circle_filled_rounded,
-                    color: AppColors.primaryLight,
-                  ),
-                  onPressed: () => setState(() => _isPlaying = !_isPlaying),
+                child: const Text(
+                  "4K ULTRA HD • 60 FPS",
+                  style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  _isPlaying ? "Streaming from Telegram Cloud..." : "Tap to Play Video",
-                  style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
-                ),
-              ],
-            ),
-            Positioned(
-              bottom: 12,
-              left: 16,
-              right: 16,
-              child: Row(
-                children: [
-                  const Text("01:14", style: TextStyle(color: Colors.white70, fontSize: 11)),
-                  Expanded(
-                    child: SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                        trackHeight: 3,
-                        activeTrackColor: AppColors.primary,
-                        inactiveTrackColor: Colors.white24,
-                        thumbColor: AppColors.accent,
-                      ),
-                      child: Slider(
-                        value: _videoProgress,
-                        onChanged: (v) => setState(() => _videoProgress = v),
-                      ),
-                    ),
-                  ),
-                  const Text("04:32", style: TextStyle(color: Colors.white70, fontSize: 11)),
-                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+              const Icon(
+                Icons.play_circle_filled_rounded,
+                size: 56,
+                color: AppColors.primaryLight,
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                "Streaming from Telegram Distributed Cloud...",
+                style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+              ),
+            ],
+          ),
         ),
       );
     } else if (isAudio) {

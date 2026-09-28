@@ -13,6 +13,8 @@ import '../widgets/share_privacy_dialog.dart';
 import '../../../auth/presentation/controllers/auth_controller.dart';
 import '../../../backup/presentation/screens/backup_settings_screen.dart';
 import '../../../transfers/presentation/screens/transfer_center_screen.dart';
+import '../../../transfers/presentation/widgets/active_upload_hud.dart';
+import '../../../transfers/data/active_upload_notifier.dart';
 
 class HomeDriveScreen extends ConsumerStatefulWidget {
   const HomeDriveScreen({super.key});
@@ -64,7 +66,12 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
           const SizedBox(width: 8),
         ],
       ),
-      body: _buildCurrentBody(),
+      body: Stack(
+        children: [
+          _buildCurrentBody(),
+          const ActiveUploadHUD(),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentNavIndex,
         onDestinationSelected: (idx) => setState(() => _currentNavIndex = idx),
@@ -520,35 +527,13 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
                     Navigator.pop(context);
                     final auth = ref.read(authControllerProvider);
                     try {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Selecting and encrypting file(s)..."),
-                          duration: Duration(seconds: 2),
-                          backgroundColor: AppColors.darkCard,
-                        ),
-                      );
                       await ref.read(driveControllerProvider.notifier).pickAndUploadFiles(
                         masterPassword: "user_vault_secure_pwd",
                         userPhone: auth.phoneNumber,
                         targetFolderId: _currentFolderId,
                       );
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("File(s) encrypted & uploaded successfully!"),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                      }
                     } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text("Upload notice: $e"),
-                            backgroundColor: Colors.redAccent,
-                          ),
-                        );
-                      }
+                      ref.read(activeUploadProvider.notifier).failUpload(e.toString());
                     }
                   },
                 ),
@@ -560,35 +545,13 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
                     Navigator.pop(context);
                     final auth = ref.read(authControllerProvider);
                     try {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Selecting and encrypting media..."),
-                          duration: Duration(seconds: 2),
-                          backgroundColor: AppColors.darkCard,
-                        ),
-                      );
                       await ref.read(driveControllerProvider.notifier).pickAndUploadMedia(
                         masterPassword: "user_vault_secure_pwd",
                         userPhone: auth.phoneNumber,
                         targetFolderId: _currentFolderId,
                       );
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("Media encrypted & uploaded successfully!"),
-                            backgroundColor: Colors.green,
-                          ),
-                        );
-                      }
                     } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text("Upload notice: $e"),
-                            backgroundColor: Colors.redAccent,
-                          ),
-                        );
-                      }
+                      ref.read(activeUploadProvider.notifier).failUpload(e.toString());
                     }
                   },
                 ),

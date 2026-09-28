@@ -25,6 +25,7 @@ class DriveItem {
   final String? previewText;
   final String? parentFolderId;
   final String? sha256Checksum;
+  final Uint8List? thumbnailBytes;
 
   const DriveItem({
     required this.id,
@@ -45,6 +46,7 @@ class DriveItem {
     this.previewText,
     this.parentFolderId,
     this.sha256Checksum,
+    this.thumbnailBytes,
   });
 
   bool get isPublic => privacy == FilePrivacy.publicWithLink && isLinkActive;
@@ -68,6 +70,7 @@ class DriveItem {
     String? previewText,
     String? parentFolderId,
     String? sha256Checksum,
+    Uint8List? thumbnailBytes,
   }) {
     return DriveItem(
       id: id ?? this.id,
@@ -88,6 +91,7 @@ class DriveItem {
       previewText: previewText ?? this.previewText,
       parentFolderId: parentFolderId ?? this.parentFolderId,
       sha256Checksum: sha256Checksum ?? this.sha256Checksum,
+      thumbnailBytes: thumbnailBytes ?? this.thumbnailBytes,
     );
   }
 }

@@ -15,6 +15,7 @@ typedef ChunkWorkerFunction = Future<dynamic> Function(int chunkIndex, Uint8List
 /// 3. Zero Head-of-Line Blocking: Independent chunk workers.
 class LoadBalancedTransferPool {
   int maxConcurrentWorkers;
+  final bool enableAdaptiveTuning;
   final CircuitBreaker circuitBreaker;
 
   int _activeWorkers = 0;
@@ -22,6 +23,7 @@ class LoadBalancedTransferPool {
 
   LoadBalancedTransferPool({
     this.maxConcurrentWorkers = 4,
+    this.enableAdaptiveTuning = true,
     CircuitBreaker? circuitBreaker,
   }) : circuitBreaker = circuitBreaker ?? CircuitBreaker(serviceName: "MTProtoPool");
 
@@ -103,6 +105,7 @@ class LoadBalancedTransferPool {
 
   /// Automatically scales concurrency up or down based on latency
   void _tuneConcurrency({required int latencyMs}) {
+    if (!enableAdaptiveTuning) return;
     if (latencyMs < 300 && maxConcurrentWorkers < 6) {
       // Fast connection, expand pool
       maxConcurrentWorkers++;
