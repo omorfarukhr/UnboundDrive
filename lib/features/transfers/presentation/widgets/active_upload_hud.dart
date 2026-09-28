@@ -181,11 +181,16 @@ class ActiveUploadHUD extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  Text(
-                    "${FileUtils.formatBytes(uploadState.bytesTransferred)} / ${FileUtils.formatBytes(uploadState.totalBytes)}",
-                    style: const TextStyle(
-                      color: AppColors.textMuted,
-                      fontSize: 11,
+                  Flexible(
+                    child: Text(
+                      "${FileUtils.formatBytes(uploadState.bytesTransferred)} / ${FileUtils.formatBytes(uploadState.totalBytes)}",
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 11,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.end,
                     ),
                   ),
                 ],

@@ -120,16 +120,17 @@ class TransferCenterScreen extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Row(
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text(
                           "${FileUtils.formatBytes(item.bytesTransferred)} / ${FileUtils.formatBytes(item.totalBytes)}",
-                          style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+                          style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
                         ),
                         if (item.isEncrypted) ...[
                           const SizedBox(width: 6),
                           const Icon(Icons.lock_rounded, size: 12, color: AppColors.accent),
-                          const Text(" Encrypted", style: TextStyle(color: AppColors.accent, fontSize: 11)),
+                          const Text(" Encrypted", style: TextStyle(color: AppColors.accent, fontSize: 10)),
                         ],
                       ],
                     ),

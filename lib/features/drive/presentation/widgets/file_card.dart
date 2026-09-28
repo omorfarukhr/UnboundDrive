@@ -115,66 +115,57 @@ class FileCard extends StatelessWidget {
                   ),
                 ],
               ),
-              const Spacer(),
-              if (hasThumbnail)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    height: 54,
-                    width: double.infinity,
-                    color: Colors.black,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      fit: StackFit.expand,
-                      children: [
-                        Image.memory(
-                          item.thumbnailBytes!,
-                          fit: BoxFit.cover,
-                        ),
-                        if (isVideo)
-                          Container(
-                            color: Colors.black38,
-                            child: const Center(
-                              child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 28),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                )
-              else if (hasRealImage)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    height: 54,
-                    width: double.infinity,
-                    color: Colors.black26,
-                    child: Image.memory(
-                      item.rawBytes!,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                )
-              else if (isVideo)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    height: 54,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.purple.shade900.withValues(alpha: 0.6),
-                          Colors.blue.shade900.withValues(alpha: 0.4),
-                        ],
-                      ),
-                    ),
-                    child: const Center(
-                      child: Icon(Icons.play_circle_fill_rounded, color: AppColors.accent, size: 28),
+              if (hasThumbnail || hasRealImage || isVideo) ...[
+                const SizedBox(height: 8),
+                Expanded(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Container(
+                      width: double.infinity,
+                      color: Colors.black,
+                      child: hasThumbnail
+                          ? Stack(
+                              alignment: Alignment.center,
+                              fit: StackFit.expand,
+                              children: [
+                                Image.memory(
+                                  item.thumbnailBytes!,
+                                  fit: BoxFit.cover,
+                                ),
+                                if (isVideo)
+                                  Container(
+                                    color: Colors.black38,
+                                    child: const Center(
+                                      child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 28),
+                                    ),
+                                  ),
+                              ],
+                            )
+                          : hasRealImage
+                              ? Image.memory(
+                                  item.rawBytes!,
+                                  fit: BoxFit.cover,
+                                )
+                              : Container(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        Colors.purple.shade900.withValues(alpha: 0.6),
+                                        Colors.blue.shade900.withValues(alpha: 0.4),
+                                      ],
+                                    ),
+                                  ),
+                                  child: const Center(
+                                    child: Icon(Icons.play_circle_fill_rounded, color: AppColors.accent, size: 28),
+                                  ),
+                                ),
                     ),
                   ),
                 ),
-              if (hasThumbnail || hasRealImage || isVideo) const SizedBox(height: 6),
+                const SizedBox(height: 8),
+              ] else ...[
+                const Spacer(),
+              ],
               Text(
                 item.name,
                 maxLines: 1,
@@ -182,18 +173,22 @@ class FileCard extends StatelessWidget {
                 style: const TextStyle(
                   color: AppColors.textLight,
                   fontWeight: FontWeight.w600,
-                  fontSize: 14,
+                  fontSize: 13,
                 ),
               ),
               const SizedBox(height: 4),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    item.isFolder ? "Folder" : FileUtils.formatBytes(item.size),
-                    style: const TextStyle(
-                      color: AppColors.textMuted,
-                      fontSize: 12,
+                  Expanded(
+                    child: Text(
+                      item.isFolder ? "Folder" : FileUtils.formatBytes(item.size),
+                      style: const TextStyle(
+                        color: AppColors.textMuted,
+                        fontSize: 11,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   if (item.isPublic)
@@ -254,47 +249,45 @@ class FileCard extends StatelessWidget {
         item.name,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: const TextStyle(color: AppColors.textLight, fontWeight: FontWeight.w600, fontSize: 15),
+        style: const TextStyle(color: AppColors.textLight, fontWeight: FontWeight.w600, fontSize: 14),
       ),
       subtitle: Text(
         item.isFolder ? "Folder" : "${FileUtils.formatBytes(item.size)} • ${FileUtils.formatDate(item.uploadDate)}",
-        style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+        style: const TextStyle(color: AppColors.textMuted, fontSize: 11),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (item.isPublic)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.success.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.public_rounded, color: AppColors.success, size: 12),
-                  SizedBox(width: 4),
-                  Text("Public Link", style: TextStyle(color: AppColors.success, fontSize: 11, fontWeight: FontWeight.bold)),
-                ],
-              ),
-            )
-          else
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.accent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.lock_rounded, color: AppColors.accent, size: 12),
-                  SizedBox(width: 4),
-                  Text("Private", style: TextStyle(color: AppColors.accent, fontSize: 11, fontWeight: FontWeight.bold)),
-                ],
-              ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            decoration: BoxDecoration(
+              color: item.isPublic
+                  ? AppColors.success.withValues(alpha: 0.15)
+                  : AppColors.accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
             ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  item.isPublic ? Icons.public_rounded : Icons.lock_rounded,
+                  color: item.isPublic ? AppColors.success : AppColors.accent,
+                  size: 11,
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  item.isPublic ? "Public" : "Private",
+                  style: TextStyle(
+                    color: item.isPublic ? AppColors.success : AppColors.accent,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(width: 4),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert_rounded, color: AppColors.textMuted),

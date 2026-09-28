@@ -5,7 +5,7 @@ import 'thumbnail_helper_stub.dart'
 
 class ThumbnailHelper {
   /// Generates a real visual frame thumbnail from video binary bytes
-  static Future<Uint8List?> generateVideoThumbnail(Uint8List videoBytes, String extension) async {
-    return impl.generateVideoThumbnailPlatform(videoBytes, extension);
+  static Future<Uint8List?> generateVideoThumbnail(Uint8List videoBytes, String extension, {String? filePath}) async {
+    return impl.generateVideoThumbnailPlatform(videoBytes, extension, filePath: filePath);
   }
 }

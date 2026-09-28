@@ -123,8 +123,10 @@ class StorageMeter extends StatelessWidget {
             "Powered by Telegram Distributed Shards • No 15GB Cap",
             style: TextStyle(
               color: AppColors.textMuted,
-              fontSize: 12,
+              fontSize: 11,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),

@@ -305,38 +305,47 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
             ),
           )
         else if (_isGrid)
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            sliver: SliverGrid(
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 1.05,
-              ),
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                  final item = filteredItems[index];
-                  return FileCard(
-                    item: item,
-                    isGrid: true,
-                    onTap: () {
-                      if (item.isFolder) {
-                        setState(() {
-                          _currentFolderId = item.id;
-                          _currentFolderName = item.name;
-                        });
-                      } else {
-                        _showFilePreview(item);
-                      }
+          SliverLayoutBuilder(
+            builder: (context, constraints) {
+              final width = constraints.crossAxisExtent;
+              final crossAxisCount = (width / 170).floor().clamp(2, 6);
+              final isPhone = width < 500;
+              final childAspectRatio = isPhone ? 0.82 : 0.95;
+
+              return SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                sliver: SliverGrid(
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: childAspectRatio,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final item = filteredItems[index];
+                      return FileCard(
+                        item: item,
+                        isGrid: true,
+                        onTap: () {
+                          if (item.isFolder) {
+                            setState(() {
+                              _currentFolderId = item.id;
+                              _currentFolderName = item.name;
+                            });
+                          } else {
+                            _showFilePreview(item);
+                          }
+                        },
+                        onShareDirect: () => _showShareDialog(item),
+                        onDownload: () => _handleFileDownload(item),
+                      );
                     },
-                    onShareDirect: () => _showShareDialog(item),
-                    onDownload: () => _handleFileDownload(item),
-                  );
-                },
-                childCount: filteredItems.length,
-              ),
-            ),
+                    childCount: filteredItems.length,
+                  ),
+                ),
+              );
+            },
           )
         else
           SliverList(

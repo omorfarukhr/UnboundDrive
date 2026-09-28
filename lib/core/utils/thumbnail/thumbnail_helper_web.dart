@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:html' as html;
 import 'dart:typed_data';
 
-Future<Uint8List?> generateVideoThumbnailPlatform(Uint8List videoBytes, String extension) async {
+Future<Uint8List?> generateVideoThumbnailPlatform(Uint8List videoBytes, String extension, {String? filePath}) async {
   try {
     final ext = extension.toLowerCase();
     String mime = 'video/mp4';

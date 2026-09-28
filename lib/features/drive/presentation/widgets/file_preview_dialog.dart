@@ -43,7 +43,10 @@ class _FilePreviewDialogState extends State<FilePreviewDialog> {
         side: const BorderSide(color: AppColors.darkBorder),
       ),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 550, maxHeight: 750),
+        constraints: BoxConstraints(
+          maxWidth: 550,
+          maxHeight: MediaQuery.of(context).size.height * 0.88,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -131,21 +134,29 @@ class _FilePreviewDialogState extends State<FilePreviewDialog> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
+                          Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: 8,
+                            runSpacing: 6,
                             children: [
-                              const Icon(Icons.verified_user_rounded, color: AppColors.success, size: 18),
-                              const SizedBox(width: 8),
-                              const Text(
-                                "Cryptographic Integrity Verified",
-                                style: TextStyle(
-                                  color: AppColors.success,
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 13,
-                                ),
+                              const Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.verified_user_rounded, color: AppColors.success, size: 16),
+                                  SizedBox(width: 6),
+                                  Text(
+                                    "Integrity Verified",
+                                    style: TextStyle(
+                                      color: AppColors.success,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const Spacer(),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                                 decoration: BoxDecoration(
                                   color: item.isPublic
                                       ? AppColors.success.withValues(alpha: 0.2)
@@ -153,7 +164,7 @@ class _FilePreviewDialogState extends State<FilePreviewDialog> {
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
-                                  item.isPublic ? "PUBLIC LINK" : "PRIVATE ONLY",
+                                  item.isPublic ? "PUBLIC" : "PRIVATE",
                                   style: TextStyle(
                                     fontSize: 10,
                                     fontWeight: FontWeight.bold,

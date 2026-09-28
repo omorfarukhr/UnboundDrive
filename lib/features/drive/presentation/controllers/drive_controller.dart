@@ -115,7 +115,7 @@ class DriveController extends StateNotifier<List<DriveItem>> {
           stage: "🎬 Extracting Real Video Thumbnail...",
         );
         try {
-          thumbnailBytes = await ThumbnailHelper.generateVideoThumbnail(bytes, ext);
+          thumbnailBytes = await ThumbnailHelper.generateVideoThumbnail(bytes, ext, filePath: file.path);
         } catch (_) {}
       } else if (isImage) {
         thumbnailBytes = bytes;
@@ -194,7 +194,7 @@ class DriveController extends StateNotifier<List<DriveItem>> {
 
     if (isVideo) {
       try {
-        thumbnailBytes = await ThumbnailHelper.generateVideoThumbnail(bytes, ext);
+        thumbnailBytes = await ThumbnailHelper.generateVideoThumbnail(bytes, ext, filePath: file.path);
       } catch (_) {}
     } else if (isImage) {
       thumbnailBytes = bytes;
