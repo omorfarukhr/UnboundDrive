@@ -252,6 +252,17 @@ class TelegramAuthService {
   /// Logs out and purges local session and credentials
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
+    final phone = prefs.getString(_keyPhone);
+    try {
+      if (phone != null && phone.isNotEmpty) {
+        await http.post(
+          Uri.parse("$bridgeBaseUrl/logout"),
+          headers: {"Content-Type": "application/json", "X-Phone": phone},
+          body: jsonEncode({"phone_number": phone}),
+        ).timeout(const Duration(seconds: 4));
+      }
+    } catch (_) {}
+
     await prefs.remove(_keySessionActive);
     await prefs.remove(_keyPhone);
     await prefs.remove(_keyFirstName);

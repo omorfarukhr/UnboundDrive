@@ -64,81 +64,8 @@ No data leaks. No central honeypot. Total privacy.""";
   "tamper_detection": true
 }""";
 
-  /// Returns real, fully interactive files ready for preview and downloading
+  /// Returns initial drive items (empty by default so homepage shows only real user files)
   static List<DriveItem> getInitialRealDriveItems() {
-    final imageBytes = sampleImageBytes;
-    final whitepaperBytes = Uint8List.fromList(utf8.encode(sampleWhitepaperText));
-    final manifestBytes = Uint8List.fromList(utf8.encode(sampleManifestJson));
-
-    return [
-      DriveItem(
-        id: "folder_camera",
-        name: "Camera Auto-Backup",
-        size: 0,
-        extension: "",
-        isFolder: true,
-        uploadDate: DateTime.now().subtract(const Duration(days: 2)),
-      ),
-      DriveItem(
-        id: "folder_work",
-        name: "Work Documents",
-        size: 0,
-        extension: "",
-        isFolder: true,
-        uploadDate: DateTime.now().subtract(const Duration(days: 1)),
-      ),
-      DriveItem(
-        id: "real_img_1",
-        name: "Unbound_Brand_Artwork.png",
-        size: imageBytes.length,
-        extension: "png",
-        uploadDate: DateTime.now().subtract(const Duration(hours: 3)),
-        isEncrypted: true,
-        privacy: FilePrivacy.publicWithLink,
-        isLinkActive: true,
-        directShareUrl: "https://dl.unbounddrive.app/f/badge192",
-        rawBytes: imageBytes,
-        sha256Checksum: "9b3c4f7281d4a0e98c76fa1234567890abcdef1234567890abcdef1234567890",
-      ),
-      DriveItem(
-        id: "real_doc_1",
-        name: "Vault_Security_Whitepaper.md",
-        size: whitepaperBytes.length,
-        extension: "md",
-        uploadDate: DateTime.now().subtract(const Duration(hours: 6)),
-        isEncrypted: true,
-        privacy: FilePrivacy.privateOnly,
-        isLinkActive: false,
-        rawBytes: whitepaperBytes,
-        previewText: sampleWhitepaperText,
-        sha256Checksum: "4f7a2b91c830e4d7a28b19c402e84d728194bfa2018c72839401827461930284",
-      ),
-      DriveItem(
-        id: "real_json_1",
-        name: "System_Manifest_v1.json",
-        size: manifestBytes.length,
-        extension: "json",
-        uploadDate: DateTime.now().subtract(const Duration(hours: 12)),
-        isEncrypted: true,
-        privacy: FilePrivacy.privateOnly,
-        isLinkActive: false,
-        rawBytes: manifestBytes,
-        previewText: sampleManifestJson,
-        sha256Checksum: "c183920194857261948572019485729184758291048572910485720194857201",
-      ),
-      DriveItem(
-        id: "real_video_1",
-        name: "MEDIANOVIX_Logo_Reveal_4K.mp4",
-        size: 4201241,
-        extension: "mp4",
-        uploadDate: DateTime.now().subtract(const Duration(days: 3)),
-        isEncrypted: true,
-        privacy: FilePrivacy.publicWithLink,
-        isLinkActive: true,
-        directShareUrl: "https://dl.unbounddrive.app/f/demo_reveal",
-        thumbnailBytes: SampleThumbnail.bytes,
-        sha256Checksum: "d837492019485720194857291847582910485729104857201948572019485720",
-      ),
-    ];
+    return const [];
   }
 }

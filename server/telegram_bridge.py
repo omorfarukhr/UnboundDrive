@@ -143,27 +143,45 @@ async def handle_send_code(request):
             )
 
         phone, client = get_or_create_client(raw_phone)
+        await ensure_connected(client)
+
+        # If client is already authorized, force clean logout so Telegram actually dispatches a fresh OTP!
+        if await client.is_user_authorized():
+            print(f"[Telegram Bridge] Client {phone} was already authorized. Logging out to enforce fresh OTP login.", flush=True)
+            try:
+                await client.log_out()
+            except Exception:
+                pass
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+            session_path = f"server/session_{phone}"
+            for ext in [".session", ".session-journal"]:
+                f = session_path + ext
+                if os.path.exists(f):
+                    try:
+                        os.remove(f)
+                    except Exception:
+                        pass
+            remove_hash(phone)
+            client = TelegramClient(session_path, API_ID, API_HASH)
+            await client.connect()
+            active_clients[phone] = {
+                "client": client,
+                "phone_code_hash": None,
+                "vault_channel_id": None,
+            }
+
         result = None
         last_error = None
-        saved_hash = get_saved_hash(phone)
+        remove_hash(phone)  # ensure we never use a stale hash for a new login request
 
         for attempt in range(3):
             try:
                 await ensure_connected(client)
                 print(f"[Telegram Bridge] Sending OTP request to {phone} (attempt {attempt+1})...", flush=True)
                 result = await client.send_code_request(phone)
-                break
-            except errors.SendCodeUnavailableError as e:
-                print(f"[Telegram Bridge] SendCodeUnavailableError: code already dispatched. Using active hash.", flush=True)
-                current_hash = saved_hash or active_clients.get(phone, {}).get("phone_code_hash")
-                if current_hash:
-                    active_clients[phone]["phone_code_hash"] = current_hash
-                    return web.json_response({
-                        "status": "ok",
-                        "phone_code_hash": current_hash,
-                        "message": "Verification code already sent to your Telegram app."
-                    }, headers=get_cors_headers())
-                last_error = e
                 break
             except errors.AuthRestartError as e:
                 print(f"[Telegram Bridge] AuthRestartError: {e}", flush=True)
@@ -189,31 +207,10 @@ async def handle_send_code(request):
                 }, status=400, headers=get_cors_headers())
             except Exception as e:
                 print(f"[Telegram Bridge] Unexpected send_code error: {type(e)} {e}", flush=True)
-                err_str = str(e).lower()
-                if "already used" in err_str or "options for this type" in err_str or "sendcodeunavailable" in err_str:
-                    current_hash = saved_hash or active_clients.get(phone, {}).get("phone_code_hash")
-                    if current_hash:
-                        print(f"[Telegram Bridge] Active hash found ({current_hash}), returning ok", flush=True)
-                        active_clients[phone]["phone_code_hash"] = current_hash
-                        return web.json_response({
-                            "status": "ok",
-                            "phone_code_hash": current_hash,
-                            "message": "Verification code already sent to your Telegram app."
-                        }, headers=get_cors_headers())
                 last_error = e
                 break
 
         if not result:
-            current_hash = saved_hash or active_clients.get(phone, {}).get("phone_code_hash")
-            if current_hash:
-                print(f"[Telegram Bridge] Fallback to saved hash {current_hash} for {phone}", flush=True)
-                active_clients[phone]["phone_code_hash"] = current_hash
-                return web.json_response({
-                    "status": "ok",
-                    "phone_code_hash": current_hash,
-                    "message": "Verification code already sent to your Telegram app."
-                }, headers=get_cors_headers())
-
             err_msg = str(last_error) if last_error else "Connection to Telegram timed out. Please tap Continue again."
             return web.json_response(
                 {"status": "error", "message": err_msg},
@@ -372,6 +369,41 @@ async def handle_get_me(request):
     except Exception as e:
         return web.json_response({"status": "error", "message": str(e)}, status=500, headers=get_cors_headers())
 
+async def handle_logout(request):
+    try:
+        phone, client = get_client_for_request(request)
+        if client:
+            try:
+                await ensure_connected(client)
+                if await client.is_user_authorized():
+                    await client.log_out()
+                    print(f"[Telegram Bridge] client.log_out() succeeded for {phone}", flush=True)
+            except Exception as e:
+                print(f"[Telegram Bridge] log_out notice: {e}", flush=True)
+            try:
+                await client.disconnect()
+            except Exception:
+                pass
+
+        session_path = f"server/session_{phone}"
+        for ext in [".session", ".session-journal"]:
+            f = session_path + ext
+            if os.path.exists(f):
+                try:
+                    os.remove(f)
+                    print(f"[Telegram Bridge] Removed session file {f}", flush=True)
+                except Exception as e:
+                    print(f"[Telegram Bridge] Error removing {f}: {e}", flush=True)
+
+        remove_hash(phone)
+        if phone in active_clients:
+            del active_clients[phone]
+
+        print(f"[Telegram Bridge] Fully purged session and logged out {phone}", flush=True)
+        return web.json_response({"status": "ok", "message": "Logged out successfully."}, headers=get_cors_headers())
+    except Exception as e:
+        return web.json_response({"status": "error", "message": str(e)}, status=500, headers=get_cors_headers())
+
 async def ensure_vault_channel(client):
     """Finds existing UnboundDrive Vault channel or creates a new strictly private channel."""
     try:
@@ -476,8 +508,22 @@ async def handle_download_chunk(request):
 
     try:
         await ensure_connected(client)
-        channel_id = active_clients.get(phone, {}).get("vault_channel_id") or "me"
-        message = await client.get_messages(channel_id, ids=int(msg_id))
+        channel_id = active_clients.get(phone, {}).get("vault_channel_id")
+        if not channel_id:
+            channel_id = await ensure_vault_channel(client)
+
+        message = None
+        if channel_id:
+            try:
+                message = await client.get_messages(channel_id, ids=int(msg_id))
+            except Exception:
+                pass
+        if not message or not message.media:
+            try:
+                message = await client.get_messages("me", ids=int(msg_id))
+            except Exception:
+                pass
+
         if not message or not message.media:
             return web.json_response({"status": "error", "message": "Chunk message not found."}, status=404, headers=get_cors_headers())
 
@@ -497,6 +543,96 @@ async def handle_download_chunk(request):
             "wait_seconds": e.seconds,
         }, status=429, headers=get_cors_headers())
     except Exception as e:
+        return web.json_response({"status": "error", "message": str(e)}, status=500, headers=get_cors_headers())
+
+async def handle_vault_sync(request):
+    phone, client = get_client_for_request(request)
+    if not client:
+        return web.json_response({"status": "unauthorized"}, status=401, headers=get_cors_headers())
+
+    try:
+        await ensure_connected(client)
+        if not await client.is_user_authorized():
+            return web.json_response({"status": "unauthorized"}, status=401, headers=get_cors_headers())
+
+        channel_id = active_clients.get(phone, {}).get("vault_channel_id")
+        if not channel_id:
+            channel_id = await ensure_vault_channel(client)
+            if channel_id and phone in active_clients:
+                active_clients[phone]["vault_channel_id"] = channel_id
+
+        destinations = [d for d in [channel_id, "me"] if d is not None]
+        file_map = {}
+
+        for dest in destinations:
+            try:
+                async for msg in client.iter_messages(dest, limit=200):
+                    caption = msg.message or ""
+                    is_chunk = "#unbound_chunk" in caption or (msg.file and msg.file.name and (msg.file.name.endswith(".ubd") or msg.file.name.endswith(".mp4") or msg.file.name.endswith(".png") or msg.file.name.endswith(".jpg") or msg.file.name.endswith(".pdf") or msg.file.name.endswith(".zip") or msg.file.name.endswith(".docx") or msg.file.name.endswith(".txt")))
+                    if not is_chunk:
+                        continue
+
+                    file_name = None
+                    if "#unbound_chunk" in caption:
+                        file_name = caption.replace("#unbound_chunk", "").strip()
+                    elif msg.file and msg.file.name:
+                        file_name = msg.file.name.replace(".ubd", "")
+
+                    if not file_name:
+                        file_name = f"Telegram_File_{msg.id}"
+
+                    chunk_size = msg.file.size if msg.file else 0
+                    msg_date = msg.date.isoformat() if msg.date else datetime.now().isoformat()
+
+                    if file_name not in file_map:
+                        file_map[file_name] = {
+                            "min_id": msg.id,
+                            "total_size": 0,
+                            "date": msg_date,
+                            "chunks": [],
+                        }
+
+                    entry = file_map[file_name]
+                    entry["total_size"] += chunk_size
+                    if msg.id < entry["min_id"]:
+                        entry["min_id"] = msg.id
+                    entry["chunks"].append({
+                        "index": len(entry["chunks"]),
+                        "telegram_message_id": msg.id,
+                        "byte_length": chunk_size,
+                    })
+            except Exception as e:
+                print(f"[Telegram Bridge] Sync scan notice for {dest}: {e}", flush=True)
+
+        items = []
+        for name, data in file_map.items():
+            if name.startswith("chunk_") or name.startswith("Telegram_File_"):
+                continue
+            ext = name.split(".")[-1].lower() if "." in name else ""
+            items.append({
+                "id": f"tg_file_{data['min_id']}",
+                "name": name,
+                "size": data["total_size"],
+                "extension": ext,
+                "isFolder": False,
+                "isEncrypted": True,
+                "uploadDate": data["date"],
+                "telegramMessageId": data["min_id"],
+                "directShareUrl": f"https://dl.unbounddrive.app/f/{data['min_id']}",
+                "privacy": "privateOnly",
+                "isLinkActive": False,
+                "chunks": data["chunks"],
+            })
+
+        print(f"[Telegram Bridge] Sync found {len(items)} file(s) for {phone}: {[i['name'] for i in items]}", flush=True)
+        return web.json_response({
+            "status": "ok",
+            "count": len(items),
+            "items": items,
+        }, headers=get_cors_headers())
+
+    except Exception as e:
+        print(f"[Telegram Bridge sync error] {e}", flush=True)
         return web.json_response({"status": "error", "message": str(e)}, status=500, headers=get_cors_headers())
 
 async def handle_sync_manifest(request):
@@ -557,9 +693,12 @@ app.router.add_route("OPTIONS", "/{tail:.*}", handle_options)
 app.router.add_post("/api/auth/send_code", handle_send_code)
 app.router.add_post("/api/auth/verify_code", handle_verify_code)
 app.router.add_post("/api/auth/verify_2fa", handle_verify_2fa)
+app.router.add_post("/api/auth/logout", handle_logout)
 app.router.add_get("/api/auth/me", handle_get_me)
 app.router.add_post("/api/drive/upload_chunk", handle_upload_chunk)
 app.router.add_get("/api/drive/download_chunk", handle_download_chunk)
+app.router.add_get("/api/drive/sync", handle_vault_sync)
+app.router.add_get("/api/vault/sync", handle_vault_sync)
 app.router.add_post("/api/drive/sync_manifest", handle_sync_manifest)
 app.router.add_get("/api/drive/get_manifest", handle_get_manifest)
 

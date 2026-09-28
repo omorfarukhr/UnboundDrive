@@ -33,10 +33,20 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
   String? _currentFolderName;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = ref.read(authControllerProvider);
+      ref.read(driveControllerProvider.notifier).syncFromTelegram(auth.phoneNumber);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Container(
               padding: const EdgeInsets.all(6),
@@ -46,25 +56,47 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
                 ),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.cloud_done_rounded, color: Colors.white, size: 20),
+              child: const Icon(Icons.cloud_done_rounded, color: Colors.white, size: 18),
             ),
-            const SizedBox(width: 10),
-            const Text(
-              "UnboundDrive",
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20, letterSpacing: -0.5),
+            const SizedBox(width: 8),
+            const Flexible(
+              child: Text(
+                "UnboundDrive",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: -0.5),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.sync_rounded),
+            tooltip: "Sync Telegram Cloud",
+            onPressed: () async {
+              final auth = ref.read(authControllerProvider);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Syncing with Telegram Cloud..."),
+                  duration: Duration(seconds: 1),
+                ),
+              );
+              await ref.read(driveControllerProvider.notifier).syncFromTelegram(auth.phoneNumber);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("✓ Telegram Cloud Synced!"),
+                    backgroundColor: AppColors.success,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+          ),
+          IconButton(
             icon: Icon(_isGrid ? Icons.view_list_rounded : Icons.grid_view_rounded),
             onPressed: () => setState(() => _isGrid = !_isGrid),
           ),
-          IconButton(
-            icon: const Icon(Icons.notifications_none_rounded),
-            onPressed: () {},
-          ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
         ],
       ),
       body: Stack(
@@ -161,8 +193,14 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
       return true;
     }).toList();
 
-    return CustomScrollView(
-      slivers: [
+    final auth = ref.watch(authControllerProvider);
+    return RefreshIndicator(
+      onRefresh: () => ref.read(driveControllerProvider.notifier).syncFromTelegram(auth.phoneNumber),
+      color: AppColors.accent,
+      backgroundColor: AppColors.darkCard,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
         // Search & Filter Header
         SliverToBoxAdapter(
           child: Padding(
@@ -376,8 +414,9 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
 
         const SliverToBoxAdapter(child: SizedBox(height: 80)),
       ],
-    );
-  }
+    ),
+  );
+}
 
   void _showFilePreview(DriveItem item) {
     showDialog(

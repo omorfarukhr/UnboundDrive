@@ -7,7 +7,10 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import '../../../../core/constants/network_config.dart';
 import '../../../../core/constants/sample_vault_data.dart';
+import '../../../../core/transfers/resumable_transfer_manager.dart';
 import '../../../../core/security/encrypted_vault_storage.dart';
 import '../../../../core/security/hardware_security_manager.dart';
 import '../../../../core/security/isolate_crypto_worker.dart';
@@ -317,10 +320,50 @@ class DriveController extends StateNotifier<List<DriveItem>> {
   }
 
   Future<void> clearCache() async {
+    state = const [];
+  }
+
+  /// Syncs files uploaded directly to Telegram Cloud channel/Saved Messages
+  Future<void> syncFromTelegram([String? phone]) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove("ubd_cached_vault_ledger");
-      state = SampleVaultData.getInitialRealDriveItems();
+      final uri = Uri.parse("${NetworkConfig.driveUrl}/sync");
+      final headers = <String, String>{};
+      if (phone != null && phone.isNotEmpty) {
+        headers["X-Phone"] = phone;
+      }
+      final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 20));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final rawItems = (data["items"] as List<dynamic>?) ?? [];
+        final syncedItems = <DriveItem>[];
+        for (final r in rawItems) {
+          final map = r as Map<String, dynamic>;
+          final rawChunks = (map["chunks"] as List<dynamic>?) ?? [];
+          final parsedChunks = rawChunks.map((c) => ChunkRecord.fromJson(c as Map<String, dynamic>)).toList();
+          syncedItems.add(
+            DriveItem(
+              id: map["id"] as String,
+              name: map["name"] as String,
+              size: map["size"] as int,
+              extension: map["extension"] as String,
+              isFolder: map["isFolder"] as bool? ?? false,
+              isEncrypted: map["isEncrypted"] as bool? ?? true,
+              uploadDate: DateTime.tryParse(map["uploadDate"] as String? ?? "") ?? DateTime.now(),
+              telegramMessageId: map["telegramMessageId"] as int?,
+              directShareUrl: map["directShareUrl"] as String?,
+              chunks: parsedChunks.isEmpty ? null : parsedChunks,
+            ),
+          );
+        }
+        if (syncedItems.isNotEmpty) {
+          final existingMap = {for (var i in state) i.name: i};
+          for (final item in syncedItems) {
+            existingMap[item.name] = item;
+          }
+          state = existingMap.values.toList();
+          await _persistLedgerCache();
+        }
+      }
     } catch (_) {}
   }
 
