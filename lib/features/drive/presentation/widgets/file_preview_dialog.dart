@@ -274,47 +274,12 @@ class _FilePreviewDialogState extends State<FilePreviewDialog> {
         );
       }
     } else if (isVideo) {
-      if (item.rawBytes != null && item.rawBytes!.isNotEmpty) {
-        return RealVideoPlayerWidget(
-          videoId: item.id,
-          videoBytes: item.rawBytes!,
-          fileName: item.name,
-          extension: item.extension,
-        );
-      }
-
-      return Container(
-        height: 260,
-        color: Colors.black,
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.8),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text(
-                  "4K ULTRA HD • 60 FPS",
-                  style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
-                ),
-              ),
-              const SizedBox(height: 16),
-              const Icon(
-                Icons.play_circle_filled_rounded,
-                size: 56,
-                color: AppColors.primaryLight,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                "Streaming from Telegram Distributed Cloud...",
-                style: TextStyle(color: AppColors.textMuted, fontSize: 12),
-              ),
-            ],
-          ),
-        ),
+      return RealVideoPlayerWidget(
+        videoId: item.id,
+        videoBytes: item.rawBytes,
+        videoUrl: (item.rawBytes == null || item.rawBytes!.isEmpty) ? "demo_reveal.mp4" : null,
+        fileName: item.name,
+        extension: item.extension,
       );
     } else if (isAudio) {
       return Container(

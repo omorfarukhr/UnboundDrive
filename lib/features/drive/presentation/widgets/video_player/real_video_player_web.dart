@@ -7,7 +7,8 @@ final Set<String> _registeredPlayerViews = {};
 
 Widget buildPlatformVideoPlayer({
   required String videoId,
-  required Uint8List videoBytes,
+  Uint8List? videoBytes,
+  String? videoUrl,
   required String fileName,
   required String extension,
 }) {
@@ -21,27 +22,38 @@ Widget buildPlatformVideoPlayer({
     mimeType = 'video/quicktime';
   }
 
-  // Create blob and object URL from raw decrypted video bytes
-  final blob = html.Blob([videoBytes], mimeType);
-  final blobUrl = html.Url.createObjectUrlFromBlob(blob);
-  final viewType = 'unbound-video-$videoId-${videoBytes.length}';
-
-  if (!_registeredPlayerViews.contains(viewType)) {
-    _registeredPlayerViews.add(viewType);
-    ui_web.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
-      final videoElement = html.VideoElement()
-        ..src = blobUrl
-        ..autoplay = true
-        ..controls = true
-        ..style.width = '100%'
-        ..style.height = '100%'
-        ..style.backgroundColor = '#000000'
-        ..style.borderRadius = '16px'
-        ..style.objectFit = 'contain';
-
-      return videoElement;
-    });
+  String finalSrc = '';
+  if (videoBytes != null && videoBytes.isNotEmpty) {
+    final blob = html.Blob([videoBytes], mimeType);
+    finalSrc = html.Url.createObjectUrlFromBlob(blob);
+  } else if (videoUrl != null && videoUrl.isNotEmpty) {
+    finalSrc = videoUrl;
+  } else {
+    // Built-in web fallback
+    finalSrc = 'demo_reveal.mp4';
   }
+
+  final viewType = 'unbound-video-$videoId-${DateTime.now().millisecondsSinceEpoch}';
+
+  ui_web.platformViewRegistry.registerViewFactory(viewType, (int viewId) {
+    final videoElement = html.VideoElement()
+      ..src = finalSrc
+      ..controls = true
+      ..setAttribute('playsinline', 'true')
+      ..setAttribute('webkit-playsinline', 'true')
+      ..setAttribute('controlsList', 'nodownload')
+      ..style.width = '100%'
+      ..style.height = '100%'
+      ..style.backgroundColor = '#000000'
+      ..style.borderRadius = '16px'
+      ..style.objectFit = 'contain';
+
+    // Muted autoplay ensures compliance with modern browser autoplay security policies
+    videoElement.muted = true;
+    videoElement.autoplay = true;
+
+    return videoElement;
+  });
 
   return Container(
     height: 280,

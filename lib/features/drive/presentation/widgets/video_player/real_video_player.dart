@@ -6,14 +6,16 @@ import 'real_video_player_stub.dart'
 
 class RealVideoPlayerWidget extends StatelessWidget {
   final String videoId;
-  final Uint8List videoBytes;
+  final Uint8List? videoBytes;
+  final String? videoUrl;
   final String fileName;
   final String extension;
 
   const RealVideoPlayerWidget({
     super.key,
     required this.videoId,
-    required this.videoBytes,
+    this.videoBytes,
+    this.videoUrl,
     required this.fileName,
     required this.extension,
   });
@@ -23,6 +25,7 @@ class RealVideoPlayerWidget extends StatelessWidget {
     return impl.buildPlatformVideoPlayer(
       videoId: videoId,
       videoBytes: videoBytes,
+      videoUrl: videoUrl,
       fileName: fileName,
       extension: extension,
     );

@@ -18,7 +18,8 @@ Future<Uint8List?> generateVideoThumbnailPlatform(Uint8List videoBytes, String e
     final video = html.VideoElement()
       ..src = url
       ..muted = true
-      ..autoplay = false;
+      ..autoplay = false
+      ..preload = 'auto';
 
     final completer = Completer<Uint8List?>();
 
@@ -28,17 +29,13 @@ Future<Uint8List?> generateVideoThumbnailPlatform(Uint8List videoBytes, String e
       } catch (_) {}
     }
 
-    video.onLoadedMetadata.listen((_) {
-      // Seek slightly into the video to avoid black intro frames
-      final duration = video.duration ?? 0;
-      final target = duration > 1.0 ? 0.8 : (duration > 0.1 ? duration / 2 : 0.1);
-      video.currentTime = target;
-    });
-
-    video.onSeeked.listen((_) {
+    void handleFrameCapture() {
       try {
-        final w = video.videoWidth > 0 ? (video.videoWidth > 320 ? 320 : video.videoWidth) : 240;
-        final h = video.videoHeight > 0 ? (video.videoHeight > 180 ? 180 : video.videoHeight) : 135;
+        final rawW = video.videoWidth > 0 ? video.videoWidth : 320;
+        final rawH = video.videoHeight > 0 ? video.videoHeight : 180;
+        final w = rawW > 320 ? 320 : rawW;
+        final h = (w * (rawH / rawW)).toInt();
+
         final canvas = html.CanvasElement(width: w, height: h);
         final ctx = canvas.context2D;
         ctx.drawImageScaled(video, 0, 0, w, h);
@@ -51,6 +48,23 @@ Future<Uint8List?> generateVideoThumbnailPlatform(Uint8List videoBytes, String e
         cleanup();
         if (!completer.isCompleted) completer.complete(null);
       }
+    }
+
+    video.onLoadedMetadata.listen((_) {
+      final duration = video.duration ?? 0;
+      final target = duration > 1.0 ? 0.8 : (duration > 0.1 ? duration / 2 : 0.05);
+      video.currentTime = target;
+    });
+
+    video.onSeeked.listen((_) {
+      handleFrameCapture();
+    });
+
+    video.onCanPlay.listen((_) {
+      if (video.currentTime == 0) {
+        final duration = video.duration ?? 0;
+        video.currentTime = duration > 1.0 ? 0.8 : 0.05;
+      }
     });
 
     video.onError.listen((_) {
@@ -58,8 +72,11 @@ Future<Uint8List?> generateVideoThumbnailPlatform(Uint8List videoBytes, String e
       if (!completer.isCompleted) completer.complete(null);
     });
 
-    // Timeout safety
-    Future.delayed(const Duration(seconds: 3), () {
+    // Start loading video stream
+    video.load();
+
+    // Timeout safety (extended to 6s for larger 4K / 1080p clips)
+    Future.delayed(const Duration(seconds: 6), () {
       cleanup();
       if (!completer.isCompleted) completer.complete(null);
     });

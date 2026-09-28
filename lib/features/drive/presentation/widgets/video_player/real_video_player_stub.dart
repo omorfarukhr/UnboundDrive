@@ -4,7 +4,8 @@ import '../../../../../app/theme/app_colors.dart';
 
 Widget buildPlatformVideoPlayer({
   required String videoId,
-  required Uint8List videoBytes,
+  Uint8List? videoBytes,
+  String? videoUrl,
   required String fileName,
   required String extension,
 }) {

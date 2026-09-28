@@ -169,12 +169,21 @@ class DriveController extends StateNotifier<List<DriveItem>> {
     String? userPhone,
     String? targetFolderId,
   }) async {
-    final picker = ImagePicker();
-    final media = await picker.pickImage(source: ImageSource.gallery);
-    if (media == null) return;
-
-    final bytes = await media.readAsBytes();
-    final fileName = media.name;
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.media,
+      allowMultiple: false,
+      withData: true,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    Uint8List bytes = file.bytes ?? Uint8List(0);
+    if (!kIsWeb && bytes.isEmpty && file.path != null) {
+      try {
+        bytes = io.File(file.path!).readAsBytesSync();
+      } catch (_) {}
+    }
+    if (bytes.isEmpty) return;
+    final fileName = file.name;
     final ext = fileName.contains('.') ? fileName.split('.').last.toLowerCase() : '';
 
     _uploadNotifier.startUpload(fileName: fileName, totalBytes: bytes.length);
