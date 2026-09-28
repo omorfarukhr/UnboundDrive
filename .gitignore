@@ -48,6 +48,7 @@ app.*.symbols
 **/android/gradlew
 **/android/gradlew.bat
 **/android/local.properties
+**/android/build/
 **/android/**/GeneratedPluginRegistrant.java
 
 # iOS/macOS related

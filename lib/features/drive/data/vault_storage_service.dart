@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:http/http.dart' as http;
+import '../../../../core/constants/network_config.dart';
 import '../../../../core/network/circuit_breaker.dart';
 import '../../../../core/network/load_balanced_transfer_pool.dart';
 import '../../../../core/security/hardware_security_manager.dart';
@@ -22,14 +23,14 @@ class VaultStorageService {
   VaultStorageService({
     TransferManager? transferManager,
     ResumableTransferManager? resumableManager,
-    String bridgeBaseUrl = "http://localhost:8086/api/drive",
+    String? bridgeBaseUrl,
   })  : _transferManager = transferManager,
         _resumableManager = resumableManager ??
             ResumableTransferManager(
               pool: LoadBalancedTransferPool(maxConcurrentWorkers: 4),
               circuitBreaker: CircuitBreaker(serviceName: "MTProtoVaultEngine"),
             ),
-        _bridgeBaseUrl = bridgeBaseUrl;
+        _bridgeBaseUrl = bridgeBaseUrl ?? NetworkConfig.driveUrl;
 
   /// Uploads and encrypts a file to the Telegram private vault channel with full fault tolerance
   Future<DriveItem> uploadFile({

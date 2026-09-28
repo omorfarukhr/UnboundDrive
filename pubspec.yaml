@@ -36,9 +36,6 @@ dependencies:
   open_filex: ^4.4.0
   permission_handler: ^11.3.1
 
-  # Background Sync & WorkManager
-  workmanager: ^0.5.2
-
   # Networking & Stream Proxy
   dio: ^5.4.3+1
   http: ^1.2.1

@@ -2,11 +2,12 @@ import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import '../../../../core/constants/telegram_constants.dart';
+import '../../../../core/constants/network_config.dart';
 import '../domain/models/auth_state.dart';
 
 class TelegramAuthService {
   final FlutterSecureStorage _secureStorage;
-  static const String bridgeBaseUrl = "http://localhost:8086/api/auth";
+  static String get bridgeBaseUrl => NetworkConfig.authUrl;
 
   TelegramAuthService({FlutterSecureStorage? secureStorage})
       : _secureStorage = secureStorage ?? const FlutterSecureStorage();
