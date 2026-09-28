@@ -42,10 +42,20 @@ class DriveController extends StateNotifier<List<DriveItem>> {
     _loadPersistedItems();
   }
 
-  Future<void> _loadPersistedItems() async {
+  Future<void> reloadPersistedItems([String? phone]) async {
+    await _loadPersistedItems(phone);
+    await syncFromTelegram(phone);
+  }
+
+  Future<void> _loadPersistedItems([String? phone]) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final savedJsonStr = prefs.getString("ubd_cached_vault_ledger");
+      String? savedJsonStr;
+      if (phone != null && phone.isNotEmpty) {
+        savedJsonStr = prefs.getString("ubd_cached_vault_ledger_$phone");
+      }
+      savedJsonStr ??= prefs.getString("ubd_cached_vault_ledger");
+
       if (savedJsonStr != null && savedJsonStr.isNotEmpty) {
         final data = jsonDecode(savedJsonStr) as Map<String, dynamic>;
         final manifest = SecureVaultManifest.fromJson(data);
@@ -307,7 +317,7 @@ class DriveController extends StateNotifier<List<DriveItem>> {
     _persistLedgerCache();
   }
 
-  Future<void> _persistLedgerCache() async {
+  Future<void> _persistLedgerCache([String? phone]) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final manifest = SecureVaultManifest(
@@ -315,7 +325,11 @@ class DriveController extends StateNotifier<List<DriveItem>> {
         channelId: -100982736412,
         items: state,
       );
-      await prefs.setString("ubd_cached_vault_ledger", jsonEncode(manifest.toJson()));
+      final jsonStr = jsonEncode(manifest.toJson());
+      await prefs.setString("ubd_cached_vault_ledger", jsonStr);
+      if (phone != null && phone.isNotEmpty) {
+        await prefs.setString("ubd_cached_vault_ledger_$phone", jsonStr);
+      }
     } catch (_) {}
   }
 
@@ -337,20 +351,43 @@ class DriveController extends StateNotifier<List<DriveItem>> {
         final rawItems = (data["items"] as List<dynamic>?) ?? [];
         final syncedItems = <DriveItem>[];
         for (final r in rawItems) {
-          final map = r as Map<String, dynamic>;
+          if (r is! Map<String, dynamic>) continue;
+          final map = r;
           final rawChunks = (map["chunks"] as List<dynamic>?) ?? [];
-          final parsedChunks = rawChunks.map((c) => ChunkRecord.fromJson(c as Map<String, dynamic>)).toList();
+          final parsedChunks = <ChunkRecord>[];
+          for (final c in rawChunks) {
+            try {
+              if (c is Map<String, dynamic>) {
+                parsedChunks.add(ChunkRecord.fromJson(c));
+              }
+            } catch (_) {}
+          }
+          final msgId = (map["telegramMessageId"] as num?)?.toInt() ??
+              (map["telegram_message_id"] as num?)?.toInt();
+          final size = (map["size"] as num?)?.toInt() ?? 0;
+
+          if (parsedChunks.isEmpty && msgId != null) {
+            parsedChunks.add(
+              ChunkRecord(
+                index: 0,
+                telegramMessageId: msgId,
+                sha256Hash: "tg_verified",
+                byteLength: size,
+              ),
+            );
+          }
+
           syncedItems.add(
             DriveItem(
-              id: map["id"] as String,
-              name: map["name"] as String,
-              size: map["size"] as int,
-              extension: map["extension"] as String,
+              id: map["id"]?.toString() ?? "tg_file_$msgId",
+              name: map["name"]?.toString() ?? "Telegram File",
+              size: size,
+              extension: map["extension"]?.toString() ?? "",
               isFolder: map["isFolder"] as bool? ?? false,
               isEncrypted: map["isEncrypted"] as bool? ?? true,
-              uploadDate: DateTime.tryParse(map["uploadDate"] as String? ?? "") ?? DateTime.now(),
-              telegramMessageId: map["telegramMessageId"] as int?,
-              directShareUrl: map["directShareUrl"] as String?,
+              uploadDate: DateTime.tryParse(map["uploadDate"]?.toString() ?? "") ?? DateTime.now(),
+              telegramMessageId: msgId,
+              directShareUrl: map["directShareUrl"]?.toString(),
               chunks: parsedChunks.isEmpty ? null : parsedChunks,
             ),
           );
@@ -361,7 +398,7 @@ class DriveController extends StateNotifier<List<DriveItem>> {
             existingMap[item.name] = item;
           }
           state = existingMap.values.toList();
-          await _persistLedgerCache();
+          await _persistLedgerCache(phone);
         }
       }
     } catch (_) {}

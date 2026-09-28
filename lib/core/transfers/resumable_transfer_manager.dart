@@ -27,10 +27,16 @@ class ChunkRecord {
       };
 
   factory ChunkRecord.fromJson(Map<String, dynamic> json) => ChunkRecord(
-        index: json["index"] as int,
-        telegramMessageId: json["telegramMessageId"] as int,
-        sha256Hash: json["sha256Hash"] as String,
-        byteLength: json["byteLength"] as int,
+        index: (json["index"] as num?)?.toInt() ?? 0,
+        telegramMessageId: (json["telegramMessageId"] as num?)?.toInt() ??
+            (json["telegram_message_id"] as num?)?.toInt() ??
+            0,
+        sha256Hash: (json["sha256Hash"] as String?) ??
+            (json["sha256_hash"] as String?) ??
+            "tg_verified",
+        byteLength: (json["byteLength"] as num?)?.toInt() ??
+            (json["byte_length"] as num?)?.toInt() ??
+            0,
       );
 }
 

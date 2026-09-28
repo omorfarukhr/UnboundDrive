@@ -1,8 +1,19 @@
 import os
+import sys
 import re
 import io
 import json
 import asyncio
+
+# Ensure UTF-8 output on Windows console so emojis in user names never cause UnicodeEncodeError
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+
 from aiohttp import web
 from telethon import TelegramClient, errors
 from telethon.tl.functions.channels import CreateChannelRequest
@@ -261,9 +272,18 @@ async def handle_verify_code(request):
         if not phone_code_hash:
             phone_code_hash = active_clients.get(phone, {}).get("phone_code_hash") or get_saved_hash(phone)
 
+        if not phone_code_hash:
+            return web.json_response({
+                "status": "error",
+                "message": "OTP session expired. Please tap Resend Code.",
+            }, status=400, headers=get_cors_headers())
+
         try:
             user = await client.sign_in(phone=phone, code=code, phone_code_hash=phone_code_hash)
-            print(f"[Telegram Bridge] Authenticated successfully as {user.first_name} ({user.id})")
+            try:
+                print(f"[Telegram Bridge] Authenticated successfully as {user.first_name} ({user.id})")
+            except Exception:
+                pass
             remove_hash(phone)
 
             channel_id = await ensure_vault_channel(client)
@@ -315,7 +335,10 @@ async def handle_verify_2fa(request):
         await ensure_connected(client)
 
         user = await client.sign_in(password=password)
-        print(f"[Telegram Bridge] 2FA Authenticated successfully as {user.first_name}")
+        try:
+            print(f"[Telegram Bridge] 2FA Authenticated successfully as {user.first_name}")
+        except Exception:
+            pass
 
         channel_id = await ensure_vault_channel(client)
         active_clients[phone]["vault_channel_id"] = channel_id
@@ -598,7 +621,10 @@ async def handle_vault_sync(request):
                         entry["min_id"] = msg.id
                     entry["chunks"].append({
                         "index": len(entry["chunks"]),
+                        "telegramMessageId": msg.id,
                         "telegram_message_id": msg.id,
+                        "sha256Hash": f"tg_hash_{msg.id}",
+                        "byteLength": chunk_size,
                         "byte_length": chunk_size,
                     })
             except Exception as e:

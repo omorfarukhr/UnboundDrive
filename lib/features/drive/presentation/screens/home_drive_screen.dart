@@ -35,9 +35,9 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final auth = ref.read(authControllerProvider);
-      ref.read(driveControllerProvider.notifier).syncFromTelegram(auth.phoneNumber);
+      await ref.read(driveControllerProvider.notifier).reloadPersistedItems(auth.phoneNumber);
     });
   }
 
@@ -80,7 +80,7 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
                   duration: Duration(seconds: 1),
                 ),
               );
-              await ref.read(driveControllerProvider.notifier).syncFromTelegram(auth.phoneNumber);
+              await ref.read(driveControllerProvider.notifier).reloadPersistedItems(auth.phoneNumber);
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -195,7 +195,7 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
 
     final auth = ref.watch(authControllerProvider);
     return RefreshIndicator(
-      onRefresh: () => ref.read(driveControllerProvider.notifier).syncFromTelegram(auth.phoneNumber),
+      onRefresh: () => ref.read(driveControllerProvider.notifier).reloadPersistedItems(auth.phoneNumber),
       color: AppColors.accent,
       backgroundColor: AppColors.darkCard,
       child: CustomScrollView(
