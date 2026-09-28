@@ -60,7 +60,18 @@ class DriveController extends StateNotifier<List<DriveItem>> {
         final data = jsonDecode(savedJsonStr) as Map<String, dynamic>;
         final manifest = SecureVaultManifest.fromJson(data);
         if (manifest.items.isNotEmpty) {
-          state = manifest.items;
+          if (state.isEmpty) {
+            state = manifest.items;
+          } else {
+            // Merge: preserve in-memory items (which have rawBytes and thumbnailBytes)
+            final currentMap = {for (var i in state) i.name: i};
+            for (final diskItem in manifest.items) {
+              if (!currentMap.containsKey(diskItem.name)) {
+                currentMap[diskItem.name] = diskItem;
+              }
+            }
+            state = currentMap.values.toList();
+          }
         }
       }
     } catch (_) {}
@@ -189,7 +200,7 @@ class DriveController extends StateNotifier<List<DriveItem>> {
       _uploadNotifier.completeUpload();
 
       // Automatically persist to sandboxed encrypted vault ledger
-      await _persistCurrentState(masterKey);
+      await _persistCurrentState(masterKey, userPhone);
     }
   }
 
@@ -259,7 +270,7 @@ class DriveController extends StateNotifier<List<DriveItem>> {
 
     state = [newItem, ...state];
     _uploadNotifier.completeUpload();
-    await _persistCurrentState(masterKey);
+    await _persistCurrentState(masterKey, userPhone);
   }
 
   /// Downloads an item and verifies integrity
@@ -395,7 +406,19 @@ class DriveController extends StateNotifier<List<DriveItem>> {
         if (syncedItems.isNotEmpty) {
           final existingMap = {for (var i in state) i.name: i};
           for (final item in syncedItems) {
-            existingMap[item.name] = item;
+            final existing = existingMap[item.name];
+            if (existing != null) {
+              // Preserve in-memory rawBytes, thumbnailBytes, previewText, and parentFolderId!
+              existingMap[item.name] = existing.copyWith(
+                size: item.size > 0 ? item.size : existing.size,
+                telegramMessageId: item.telegramMessageId ?? existing.telegramMessageId,
+                chunks: item.chunks ?? existing.chunks,
+                directShareUrl: item.directShareUrl ?? existing.directShareUrl,
+                uploadDate: item.uploadDate,
+              );
+            } else {
+              existingMap[item.name] = item;
+            }
           }
           state = existingMap.values.toList();
           await _persistLedgerCache(phone);
@@ -404,9 +427,9 @@ class DriveController extends StateNotifier<List<DriveItem>> {
     } catch (_) {}
   }
 
-  Future<void> _persistCurrentState(enc.Key masterKey) async {
+  Future<void> _persistCurrentState(enc.Key masterKey, [String? phone]) async {
     try {
-      await _persistLedgerCache();
+      await _persistLedgerCache(phone);
       final manifest = SecureVaultManifest(
         lastUpdated: DateTime.now(),
         channelId: -100982736412,

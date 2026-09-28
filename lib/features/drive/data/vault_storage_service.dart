@@ -62,12 +62,21 @@ class VaultStorageService {
     );
 
     try {
-      // 1. Chunk file into 2MB blocks for optimal MTProto parallel distribution
-      const int optimalChunkSize = 2 * 1024 * 1024; // 2MB
+      // 1. Files <= 50MB are uploaded as 1 complete Telegram file. Files > 50MB are chunked into 20MB blocks.
+      final optimalChunkSize = totalSize <= 50 * 1024 * 1024
+          ? totalSize
+          : 20 * 1024 * 1024;
       final fileChunks = FileChunker.chunkBytes(fileBytes, optimalChunkSize);
       final rawChunks = fileChunks.map((c) => c.bytes).toList();
 
-      onProgress?.call(0.3, (totalSize * 0.3).toInt(), "5.1 MB/s", "⚡ Sharding into ${rawChunks.length} Telegram block(s)...");
+      onProgress?.call(
+        0.3,
+        (totalSize * 0.3).toInt(),
+        "5.1 MB/s",
+        rawChunks.length == 1
+            ? "⚡ Preparing Telegram Cloud vault upload..."
+            : "⚡ Sharding into ${rawChunks.length} Telegram block(s)...",
+      );
 
       // 2. Execute parallel upload with resumable state journaling and isolate crypto
       final chunkRecords = await _resumableManager.executeResumableUpload(
@@ -81,7 +90,9 @@ class VaultStorageService {
             final headers = <String, String>{
               "Content-Type": "application/octet-stream",
               "X-Chunk-Index": chunkIdx.toString(),
+              "X-Total-Chunks": rawChunks.length.toString(),
               "X-File-Name": fileName,
+              "X-File-Size": totalSize.toString(),
             };
             if (userPhone != null && userPhone.isNotEmpty) {
               headers["X-Phone"] = userPhone;
@@ -119,7 +130,9 @@ class VaultStorageService {
             mappedProgress,
             bytesUploaded,
             speed,
-            "🚀 Streaming chunks to Telegram Cloud Shards...",
+            rawChunks.length == 1
+                ? "🚀 Streaming directly to Telegram Cloud..."
+                : "🚀 Streaming chunk ${bytesUploaded ~/ (1024 * 1024)}MB / ${totalSize ~/ (1024 * 1024)}MB to Telegram Cloud...",
           );
         },
       );

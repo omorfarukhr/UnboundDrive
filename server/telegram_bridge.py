@@ -456,6 +456,8 @@ async def handle_upload_chunk(request):
             return web.json_response({"status": "error", "message": "Empty chunk payload."}, status=400, headers=get_cors_headers())
 
         file_name = request.headers.get("X-File-Name", f"chunk_{len(chunk_bytes)}.ubd")
+        chunk_index = request.headers.get("X-Chunk-Index", "0")
+        total_chunks = request.headers.get("X-Total-Chunks", "1")
 
         if client:
             try:
@@ -472,11 +474,16 @@ async def handle_upload_chunk(request):
                         chunk_file.name = file_name
 
                         destination = channel_id or "me"
+                        if total_chunks == "1":
+                            caption = f"#unbound_vault {file_name}"
+                        else:
+                            caption = f"#unbound_chunk {file_name} [part {int(chunk_index)+1}/{total_chunks}]"
+
                         try:
                             message = await client.send_file(
                                 destination,
                                 file=chunk_file,
-                                caption=f"#unbound_chunk {file_name}",
+                                caption=caption,
                                 force_document=True,
                             )
                         except Exception as dest_err:
@@ -485,11 +492,11 @@ async def handle_upload_chunk(request):
                             message = await client.send_file(
                                 "me",
                                 file=chunk_file,
-                                caption=f"#unbound_chunk {file_name}",
+                                caption=caption,
                                 force_document=True,
                             )
 
-                        print(f"[Telegram Bridge] Uploaded real MTProto chunk to Telegram (msg_id: {message.id}, file: {file_name})", flush=True)
+                        print(f"[Telegram Bridge] Uploaded real MTProto document to Telegram (msg_id: {message.id}, file: {file_name}, size: {len(chunk_bytes)} bytes)", flush=True)
                         return web.json_response({
                             "status": "ok",
                             "telegram_message_id": message.id,
@@ -591,18 +598,27 @@ async def handle_vault_sync(request):
             try:
                 async for msg in client.iter_messages(dest, limit=200):
                     caption = msg.message or ""
-                    is_chunk = "#unbound_chunk" in caption or (msg.file and msg.file.name and (msg.file.name.endswith(".ubd") or msg.file.name.endswith(".mp4") or msg.file.name.endswith(".png") or msg.file.name.endswith(".jpg") or msg.file.name.endswith(".pdf") or msg.file.name.endswith(".zip") or msg.file.name.endswith(".docx") or msg.file.name.endswith(".txt")))
-                    if not is_chunk:
+                    is_vault_msg = (
+                        "#unbound_vault" in caption or
+                        "#unbound_chunk" in caption or
+                        (msg.file and msg.file.name and any(
+                            msg.file.name.lower().endswith(ext)
+                            for ext in [".ubd", ".mp4", ".png", ".jpg", ".jpeg", ".pdf", ".zip", ".docx", ".txt", ".webm", ".mkv", ".mov"]
+                        ))
+                    )
+                    if not is_vault_msg:
                         continue
 
                     file_name = None
-                    if "#unbound_chunk" in caption:
-                        file_name = caption.replace("#unbound_chunk", "").strip()
+                    if "#unbound_vault" in caption:
+                        file_name = caption.replace("#unbound_vault", "").strip().split(" [part")[0].strip()
+                    elif "#unbound_chunk" in caption:
+                        file_name = caption.replace("#unbound_chunk", "").strip().split(" [part")[0].strip()
                     elif msg.file and msg.file.name:
                         file_name = msg.file.name.replace(".ubd", "")
 
-                    if not file_name:
-                        file_name = f"Telegram_File_{msg.id}"
+                    if not file_name or file_name.startswith("chunk_") or file_name.startswith("Telegram_File_"):
+                        continue
 
                     chunk_size = msg.file.size if msg.file else 0
                     msg_date = msg.date.isoformat() if msg.date else datetime.now().isoformat()
@@ -610,23 +626,34 @@ async def handle_vault_sync(request):
                     if file_name not in file_map:
                         file_map[file_name] = {
                             "min_id": msg.id,
-                            "total_size": 0,
+                            "latest_id": msg.id,
+                            "total_size": chunk_size,
                             "date": msg_date,
-                            "chunks": [],
+                            "chunks": [{
+                                "index": 0,
+                                "telegramMessageId": msg.id,
+                                "telegram_message_id": msg.id,
+                                "sha256Hash": f"tg_hash_{msg.id}",
+                                "byteLength": chunk_size,
+                                "byte_length": chunk_size,
+                            }],
                         }
-
-                    entry = file_map[file_name]
-                    entry["total_size"] += chunk_size
-                    if msg.id < entry["min_id"]:
-                        entry["min_id"] = msg.id
-                    entry["chunks"].append({
-                        "index": len(entry["chunks"]),
-                        "telegramMessageId": msg.id,
-                        "telegram_message_id": msg.id,
-                        "sha256Hash": f"tg_hash_{msg.id}",
-                        "byteLength": chunk_size,
-                        "byte_length": chunk_size,
-                    })
+                    else:
+                        entry = file_map[file_name]
+                        # Only aggregate size if this is explicitly a multi-chunk part
+                        if "[part" in caption:
+                            entry["chunks"].append({
+                                "index": len(entry["chunks"]),
+                                "telegramMessageId": msg.id,
+                                "telegram_message_id": msg.id,
+                                "sha256Hash": f"tg_hash_{msg.id}",
+                                "byteLength": chunk_size,
+                                "byte_length": chunk_size,
+                            })
+                            entry["total_size"] += chunk_size
+                            if msg.id < entry["min_id"]:
+                                entry["min_id"] = msg.id
+                        # If it's a separate full single file, iter_messages already gave us the latest upload first
             except Exception as e:
                 print(f"[Telegram Bridge] Sync scan notice for {dest}: {e}", flush=True)
 
