@@ -9,7 +9,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import '../../../../core/constants/network_config.dart';
-import '../../../../core/constants/sample_vault_data.dart';
 import '../../../../core/transfers/resumable_transfer_manager.dart';
 import '../../../../core/security/encrypted_vault_storage.dart';
 import '../../../../core/security/hardware_security_manager.dart';
@@ -37,45 +36,115 @@ class DriveController extends StateNotifier<List<DriveItem>> {
   final VaultStorageService _storageService;
   final ActiveUploadNotifier _uploadNotifier;
 
-  DriveController(this._storageService, this._uploadNotifier)
-      : super(SampleVaultData.getInitialRealDriveItems()) {
-    _loadPersistedItems();
-  }
+  /// The phone number of the currently logged-in user. Used as the namespace
+  /// key for all persistence operations so that different accounts never
+  /// leak files into each other.
+  String? _currentPhone;
 
-  Future<void> reloadPersistedItems([String? phone]) async {
-    await _loadPersistedItems(phone);
+  DriveController(this._storageService, this._uploadNotifier)
+      : super(const []);
+
+  // ---------------------------------------------------------------------------
+  // Account lifecycle
+  // ---------------------------------------------------------------------------
+
+  /// Called when a user logs in (or the app restores a session). Sets the
+  /// phone-scoped namespace and loads ONLY that user's persisted files, then
+  /// syncs from Telegram.
+  Future<void> loadAccountFiles(String? phone) async {
+    _currentPhone = phone;
+
+    // Always start fresh for this account – never carry over another user's
+    // in-memory state.
+    state = const [];
+
+    // Load from phone-specific cache only
+    await _loadPersistedItemsForPhone(phone);
+
+    // Sync from Telegram to pick up any files uploaded from other devices
     await syncFromTelegram(phone);
   }
 
-  Future<void> _loadPersistedItems([String? phone]) async {
+  /// Called on pull-to-refresh or manual sync tap. Does NOT wipe state; instead
+  /// merges Telegram cloud state into the existing in-memory items.
+  Future<void> reloadPersistedItems([String? phone]) async {
+    final effectivePhone = phone ?? _currentPhone;
+    await syncFromTelegram(effectivePhone);
+  }
+
+  /// Called when the user logs out. Wipes in-memory state but does NOT touch
+  /// the phone-specific persisted cache (so files survive re-login).
+  Future<void> clearCache() async {
+    _currentPhone = null;
+    state = const [];
+  }
+
+  // ---------------------------------------------------------------------------
+  // Persistence (phone-scoped)
+  // ---------------------------------------------------------------------------
+
+  /// Loads items from SharedPreferences using the phone-specific key ONLY.
+  /// Never falls back to the generic key – that was the source of cross-account
+  /// file leakage.
+  Future<void> _loadPersistedItemsForPhone(String? phone) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       String? savedJsonStr;
       if (phone != null && phone.isNotEmpty) {
         savedJsonStr = prefs.getString("ubd_cached_vault_ledger_$phone");
       }
-      savedJsonStr ??= prefs.getString("ubd_cached_vault_ledger");
+      // NOTE: We intentionally do NOT fall back to the generic key
+      // "ubd_cached_vault_ledger" because that key is shared across all
+      // accounts and causes cross-account file leakage.
 
       if (savedJsonStr != null && savedJsonStr.isNotEmpty) {
         final data = jsonDecode(savedJsonStr) as Map<String, dynamic>;
         final manifest = SecureVaultManifest.fromJson(data);
         if (manifest.items.isNotEmpty) {
-          if (state.isEmpty) {
-            state = manifest.items;
-          } else {
-            // Merge: preserve in-memory items (which have rawBytes and thumbnailBytes)
-            final currentMap = {for (var i in state) i.name: i};
-            for (final diskItem in manifest.items) {
-              if (!currentMap.containsKey(diskItem.name)) {
-                currentMap[diskItem.name] = diskItem;
-              }
-            }
-            state = currentMap.values.toList();
-          }
+          state = manifest.items;
         }
       }
     } catch (_) {}
   }
+
+  /// Persists the current state to the phone-specific SharedPreferences key.
+  Future<void> _persistLedgerCache([String? phone]) async {
+    final effectivePhone = phone ?? _currentPhone;
+    if (effectivePhone == null || effectivePhone.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final manifest = SecureVaultManifest(
+        lastUpdated: DateTime.now(),
+        channelId: -100982736412,
+        items: state,
+      );
+      final jsonStr = jsonEncode(manifest.toJson());
+      // Save ONLY under the phone-specific key
+      await prefs.setString("ubd_cached_vault_ledger_$effectivePhone", jsonStr);
+    } catch (_) {}
+  }
+
+  Future<void> _persistCurrentState(enc.Key masterKey, [String? phone]) async {
+    final effectivePhone = phone ?? _currentPhone;
+    try {
+      await _persistLedgerCache(effectivePhone);
+      final manifest = SecureVaultManifest(
+        lastUpdated: DateTime.now(),
+        channelId: -100982736412,
+        items: state,
+      );
+      await EncryptedVaultStorage.persistLedger(
+        ledgerJson: manifest.toJson(),
+        masterKey: masterKey,
+      );
+    } catch (_) {
+      // Non-blocking persistence
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Upload
+  // ---------------------------------------------------------------------------
 
   /// Derives master key using hardware salt and Argon2id in a background isolate
   Future<enc.Key> _deriveMasterKey(String masterPassword) async {
@@ -199,7 +268,7 @@ class DriveController extends StateNotifier<List<DriveItem>> {
       state = [newItem, ...state];
       _uploadNotifier.completeUpload();
 
-      // Automatically persist to sandboxed encrypted vault ledger
+      // Persist immediately under the current user's phone key
       await _persistCurrentState(masterKey, userPhone);
     }
   }
@@ -273,6 +342,10 @@ class DriveController extends StateNotifier<List<DriveItem>> {
     await _persistCurrentState(masterKey, userPhone);
   }
 
+  // ---------------------------------------------------------------------------
+  // Download
+  // ---------------------------------------------------------------------------
+
   /// Downloads an item and verifies integrity
   Future<Uint8List> downloadItem(DriveItem item, {
     required String masterPassword,
@@ -289,6 +362,10 @@ class DriveController extends StateNotifier<List<DriveItem>> {
       userPhone: userPhone,
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Folder / item management
+  // ---------------------------------------------------------------------------
 
   /// Creates a new virtual folder
   void createFolder(String folderName, {String? parentFolderId}) {
@@ -328,33 +405,18 @@ class DriveController extends StateNotifier<List<DriveItem>> {
     _persistLedgerCache();
   }
 
-  Future<void> _persistLedgerCache([String? phone]) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final manifest = SecureVaultManifest(
-        lastUpdated: DateTime.now(),
-        channelId: -100982736412,
-        items: state,
-      );
-      final jsonStr = jsonEncode(manifest.toJson());
-      await prefs.setString("ubd_cached_vault_ledger", jsonStr);
-      if (phone != null && phone.isNotEmpty) {
-        await prefs.setString("ubd_cached_vault_ledger_$phone", jsonStr);
-      }
-    } catch (_) {}
-  }
-
-  Future<void> clearCache() async {
-    state = const [];
-  }
+  // ---------------------------------------------------------------------------
+  // Telegram sync
+  // ---------------------------------------------------------------------------
 
   /// Syncs files uploaded directly to Telegram Cloud channel/Saved Messages
   Future<void> syncFromTelegram([String? phone]) async {
+    final effectivePhone = phone ?? _currentPhone;
     try {
       final uri = Uri.parse("${NetworkConfig.driveUrl}/sync");
       final headers = <String, String>{};
-      if (phone != null && phone.isNotEmpty) {
-        headers["X-Phone"] = phone;
+      if (effectivePhone != null && effectivePhone.isNotEmpty) {
+        headers["X-Phone"] = effectivePhone;
       }
       final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 20));
       if (response.statusCode == 200) {
@@ -404,11 +466,12 @@ class DriveController extends StateNotifier<List<DriveItem>> {
           );
         }
         if (syncedItems.isNotEmpty) {
+          // Build map from current state, preserving in-memory rawBytes/thumbnails
           final existingMap = {for (var i in state) i.name: i};
           for (final item in syncedItems) {
             final existing = existingMap[item.name];
             if (existing != null) {
-              // Preserve in-memory rawBytes, thumbnailBytes, previewText, and parentFolderId!
+              // Keep the in-memory data (rawBytes, thumbnailBytes, previewText)
               existingMap[item.name] = existing.copyWith(
                 size: item.size > 0 ? item.size : existing.size,
                 telegramMessageId: item.telegramMessageId ?? existing.telegramMessageId,
@@ -421,26 +484,9 @@ class DriveController extends StateNotifier<List<DriveItem>> {
             }
           }
           state = existingMap.values.toList();
-          await _persistLedgerCache(phone);
+          await _persistLedgerCache(effectivePhone);
         }
       }
     } catch (_) {}
-  }
-
-  Future<void> _persistCurrentState(enc.Key masterKey, [String? phone]) async {
-    try {
-      await _persistLedgerCache(phone);
-      final manifest = SecureVaultManifest(
-        lastUpdated: DateTime.now(),
-        channelId: -100982736412,
-        items: state,
-      );
-      await EncryptedVaultStorage.persistLedger(
-        ledgerJson: manifest.toJson(),
-        masterKey: masterKey,
-      );
-    } catch (_) {
-      // Non-blocking persistence
-    }
   }
 }

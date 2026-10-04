@@ -37,7 +37,7 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final auth = ref.read(authControllerProvider);
-      await ref.read(driveControllerProvider.notifier).reloadPersistedItems(auth.phoneNumber);
+      await ref.read(driveControllerProvider.notifier).loadAccountFiles(auth.phoneNumber);
     });
   }
 
