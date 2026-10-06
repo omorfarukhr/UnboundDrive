@@ -86,12 +86,21 @@ class VaultStorageService {
         masterKey: masterKey,
         uploadFn: (chunkIdx, encryptedChunk, chunkHash) async {
           try {
-            final uri = Uri.parse("$_bridgeBaseUrl/upload_chunk");
+            final queryParams = <String, String>{
+              "fileName": fileName,
+              "chunkIndex": chunkIdx.toString(),
+              "totalChunks": rawChunks.length.toString(),
+              "totalSize": totalSize.toString(),
+            };
+            if (userPhone != null && userPhone.isNotEmpty) {
+              queryParams["phone"] = userPhone;
+            }
+            final uri = Uri.parse("$_bridgeBaseUrl/upload_chunk").replace(queryParameters: queryParams);
             final headers = <String, String>{
               "Content-Type": "application/octet-stream",
               "X-Chunk-Index": chunkIdx.toString(),
               "X-Total-Chunks": rawChunks.length.toString(),
-              "X-File-Name": fileName,
+              "X-File-Name": Uri.encodeComponent(fileName),
               "X-File-Size": totalSize.toString(),
             };
             if (userPhone != null && userPhone.isNotEmpty) {

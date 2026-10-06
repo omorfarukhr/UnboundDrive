@@ -82,8 +82,8 @@ def get_session_name(phone: str) -> str:
 def get_cors_headers():
     return {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Phone, X-Chunk-Index",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS, PUT, DELETE",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Phone, X-Chunk-Index, X-Total-Chunks, X-File-Name, X-File-Size, *",
     }
 
 async def handle_options(request):
@@ -124,19 +124,15 @@ async def ensure_connected(client: TelegramClient):
         await client.connect()
 
 def get_client_for_request(request):
-    phone = request.headers.get("X-Phone", "").strip()
-    if not phone and len(active_clients) == 1:
-        phone = list(active_clients.keys())[0]
-
+    phone = (
+        request.query.get("phone") or 
+        request.query.get("phone_number") or 
+        request.headers.get("X-Phone", "")
+    ).strip()
     phone = clean_phone(phone)
-    if not phone and os.path.exists("server"):
-        # Auto-discover active session file in server/
-        session_files = [f for f in os.listdir("server") if f.startswith("session_") and f.endswith(".session")]
-        if session_files:
-            session_files.sort(key=lambda f: os.path.getmtime(os.path.join("server", f)), reverse=True)
-            phone = session_files[0].replace("session_", "").replace(".session", "")
 
-    if phone and phone in active_clients:
+    # Strictly scope to requested phone. NEVER auto-inherit another user's session!
+    if phone and phone in active_clients and active_clients[phone].get("client"):
         return phone, active_clients[phone]["client"]
     elif phone:
         return get_or_create_client(phone)
@@ -455,9 +451,18 @@ async def handle_upload_chunk(request):
         if not chunk_bytes:
             return web.json_response({"status": "error", "message": "Empty chunk payload."}, status=400, headers=get_cors_headers())
 
-        file_name = request.headers.get("X-File-Name", f"chunk_{len(chunk_bytes)}.ubd")
-        chunk_index = request.headers.get("X-Chunk-Index", "0")
-        total_chunks = request.headers.get("X-Total-Chunks", "1")
+        raw_name = (
+            request.query.get("fileName") or 
+            request.query.get("file_name") or 
+            request.headers.get("X-File-Name")
+        )
+        if raw_name:
+            file_name = urllib.parse.unquote(raw_name)
+        else:
+            file_name = f"vault_upload_{len(chunk_bytes)}.bin"
+
+        chunk_index = request.query.get("chunkIndex") or request.headers.get("X-Chunk-Index", "0")
+        total_chunks = request.query.get("totalChunks") or request.headers.get("X-Total-Chunks", "1")
 
         if client:
             try:
@@ -617,7 +622,7 @@ async def handle_vault_sync(request):
                     elif msg.file and msg.file.name:
                         file_name = msg.file.name.replace(".ubd", "")
 
-                    if not file_name or file_name.startswith("chunk_") or file_name.startswith("Telegram_File_"):
+                    if not file_name or file_name.startswith("Telegram_File_"):
                         continue
 
                     chunk_size = msg.file.size if msg.file else 0
@@ -659,7 +664,7 @@ async def handle_vault_sync(request):
 
         items = []
         for name, data in file_map.items():
-            if name.startswith("chunk_") or name.startswith("Telegram_File_"):
+            if name.startswith("Telegram_File_"):
                 continue
             ext = name.split(".")[-1].lower() if "." in name else ""
             items.append({

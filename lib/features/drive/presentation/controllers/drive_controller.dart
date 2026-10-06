@@ -413,7 +413,13 @@ class DriveController extends StateNotifier<List<DriveItem>> {
   Future<void> syncFromTelegram([String? phone]) async {
     final effectivePhone = phone ?? _currentPhone;
     try {
-      final uri = Uri.parse("${NetworkConfig.driveUrl}/sync");
+      final queryParams = <String, String>{};
+      if (effectivePhone != null && effectivePhone.isNotEmpty) {
+        queryParams["phone"] = effectivePhone;
+      }
+      final uri = Uri.parse("${NetworkConfig.driveUrl}/sync").replace(
+        queryParameters: queryParams.isEmpty ? null : queryParams,
+      );
       final headers = <String, String>{};
       if (effectivePhone != null && effectivePhone.isNotEmpty) {
         headers["X-Phone"] = effectivePhone;
