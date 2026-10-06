@@ -356,11 +356,21 @@ class DriveController extends StateNotifier<List<DriveItem>> {
     }
 
     final masterKey = await _deriveMasterKey(masterPassword);
-    return await _storageService.downloadFile(
+    final downloadedBytes = await _storageService.downloadFile(
       item: item,
       masterKey: masterKey,
       userPhone: userPhone,
     );
+
+    // Cache downloaded bytes into in-memory state so subsequent views don't re-download
+    state = state.map((i) {
+      if (i.id == item.id) {
+        return i.copyWith(rawBytes: downloadedBytes);
+      }
+      return i;
+    }).toList();
+
+    return downloadedBytes;
   }
 
   // ---------------------------------------------------------------------------

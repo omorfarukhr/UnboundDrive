@@ -29,8 +29,7 @@ Widget buildPlatformVideoPlayer({
   } else if (videoUrl != null && videoUrl.isNotEmpty) {
     finalSrc = videoUrl;
   } else {
-    // Built-in web fallback
-    finalSrc = 'demo_reveal.mp4';
+    finalSrc = '';
   }
 
   final viewType = 'unbound-video-$videoId-${DateTime.now().millisecondsSinceEpoch}';

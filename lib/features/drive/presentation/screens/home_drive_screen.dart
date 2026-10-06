@@ -451,14 +451,28 @@ class _HomeDriveScreenState extends ConsumerState<HomeDriveScreen> {
           ],
         ),
         backgroundColor: AppColors.primary,
-        duration: const Duration(seconds: 2),
+        duration: const Duration(seconds: 4),
       ),
     );
 
-    final bytes = item.rawBytes ??
-        (item.previewText != null
-            ? Uint8List.fromList(item.previewText!.codeUnits)
-            : Uint8List.fromList("Decrypted UnboundDrive File: ${item.name}".codeUnits));
+    Uint8List? bytes = item.rawBytes;
+    if (bytes == null || bytes.isEmpty) {
+      try {
+        final auth = ref.read(authControllerProvider);
+        bytes = await ref.read(driveControllerProvider.notifier).downloadItem(
+          item,
+          masterPassword: "user_vault_secure_pwd",
+          userPhone: auth.phoneNumber,
+        );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text("Download failed: $e"), backgroundColor: AppColors.error),
+          );
+        }
+        return;
+      }
+    }
 
     await FileDownloadHelper.downloadFile(
       bytes: bytes,

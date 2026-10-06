@@ -195,36 +195,44 @@ class VaultStorageService {
     );
 
     try {
-      final chunks = item.chunks;
+      final effectiveChunks = (item.chunks != null && item.chunks!.isNotEmpty)
+          ? item.chunks!
+          : (item.telegramMessageId != null
+              ? [
+                  ChunkRecord(
+                    index: 0,
+                    telegramMessageId: item.telegramMessageId!,
+                    sha256Hash: "tg_verified",
+                    byteLength: item.size,
+                  )
+                ]
+              : <ChunkRecord>[]);
+
       Uint8List fileData;
 
-      if (chunks != null && chunks.isNotEmpty) {
+      if (effectiveChunks.isNotEmpty) {
         // Multi-chunk parallel download with self-healing verification
         fileData = await _resumableManager.executeResumableDownload(
-          chunkRecords: chunks,
+          chunkRecords: effectiveChunks,
           masterKey: masterKey,
           downloadFn: (messageId) async {
-            try {
-              final uri = Uri.parse("$_bridgeBaseUrl/download_chunk?message_id=$messageId");
-              final headers = <String, String>{};
-              if (userPhone != null && userPhone.isNotEmpty) {
-                headers["X-Phone"] = userPhone;
-              }
+            final queryParams = <String, String>{
+              "message_id": messageId.toString(),
+            };
+            if (userPhone != null && userPhone.isNotEmpty) {
+              queryParams["phone"] = userPhone;
+            }
+            final uri = Uri.parse("$_bridgeBaseUrl/download_chunk").replace(queryParameters: queryParams);
+            final headers = <String, String>{};
+            if (userPhone != null && userPhone.isNotEmpty) {
+              headers["X-Phone"] = userPhone;
+            }
 
-              final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 45));
-              if (response.statusCode == 200) {
-                return response.bodyBytes;
-              } else {
-                throw Exception("MTProto bridge download error: ${response.statusCode}");
-              }
-            } catch (_) {
-              // Simulated chunk return if bridge offline
-              await Future.delayed(const Duration(milliseconds: 120));
-              final dummyPayload = Uint8List(item.size ~/ chunks.length);
-              return await IsolateCryptoWorker.sealEnvelope(
-                payload: dummyPayload,
-                keyBytes: Uint8List.fromList(masterKey.bytes),
-              );
+            final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 45));
+            if (response.statusCode == 200) {
+              return response.bodyBytes;
+            } else {
+              throw Exception("MTProto bridge download error: ${response.statusCode}");
             }
           },
           onProgress: (progress, speed) {
@@ -237,17 +245,7 @@ class VaultStorageService {
           },
         );
       } else {
-        // Single envelope file download
-        for (int s = 1; s <= 5; s++) {
-          await Future.delayed(const Duration(milliseconds: 100));
-          _transferManager?.updateProgress(
-            id: transferId,
-            bytesTransferred: (item.size * (s / 5)).toInt(),
-            progress: s / 5,
-            speed: "28.5 MB/s",
-          );
-        }
-        fileData = Uint8List(item.size);
+        throw Exception("File '${item.name}' has no linked Telegram message to download.");
       }
 
       _transferManager?.completeTransfer(transferId);

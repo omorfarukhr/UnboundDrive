@@ -70,10 +70,10 @@ class _NativeVideoPlayerWidgetState extends State<NativeVideoPlayerWidget> {
         if (widget.videoUrl!.startsWith('http://') || widget.videoUrl!.startsWith('https://')) {
           _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl!));
         } else {
-          _controller = VideoPlayerController.asset('assets/videos/MEDIANOVIX_Logo_Reveal_4K.mp4');
+          throw Exception("No video source provided.");
         }
       } else {
-        _controller = VideoPlayerController.asset('assets/videos/MEDIANOVIX_Logo_Reveal_4K.mp4');
+        throw Exception("No video source provided.");
       }
 
       await _controller!.initialize();
