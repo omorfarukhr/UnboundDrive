@@ -228,7 +228,7 @@ class VaultStorageService {
               headers["X-Phone"] = userPhone;
             }
 
-            final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 45));
+            final response = await http.get(uri, headers: headers).timeout(const Duration(seconds: 300));
             if (response.statusCode == 200) {
               return response.bodyBytes;
             } else {

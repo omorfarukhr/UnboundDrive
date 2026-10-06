@@ -503,6 +503,15 @@ async def handle_upload_chunk(request):
                             )
 
                         print(f"[Telegram Bridge] Uploaded real MTProto document to Telegram (msg_id: {message.id}, file: {file_name}, size: {len(chunk_bytes)} bytes)", flush=True)
+
+                        # Cache to disk for instant zero-latency retrieval
+                        os.makedirs("server/cache", exist_ok=True)
+                        try:
+                            with open(f"server/cache/{message.id}.ubd", "wb") as f:
+                                f.write(chunk_bytes)
+                        except Exception:
+                            pass
+
                         return web.json_response({
                             "status": "ok",
                             "telegram_message_id": message.id,
@@ -542,6 +551,21 @@ async def handle_download_chunk(request):
     if not msg_id:
         return web.json_response({"status": "error", "message": "message_id is required."}, status=400, headers=get_cors_headers())
 
+    # 1. Check local disk cache first for instant response
+    cache_file = f"server/cache/{msg_id}.ubd"
+    if os.path.exists(cache_file):
+        try:
+            print(f"[Telegram Bridge] Serving msg_id {msg_id} directly from local vault cache", flush=True)
+            with open(cache_file, "rb") as f:
+                cached_bytes = f.read()
+            return web.Response(
+                body=cached_bytes,
+                content_type="application/octet-stream",
+                headers=get_cors_headers(),
+            )
+        except Exception as e:
+            print(f"[Telegram Bridge] Cache read notice: {e}", flush=True)
+
     try:
         await ensure_connected(client)
         channel_id = active_clients.get(phone, {}).get("vault_channel_id")
@@ -563,12 +587,23 @@ async def handle_download_chunk(request):
         if not message or not message.media:
             return web.json_response({"status": "error", "message": "Chunk message not found."}, status=404, headers=get_cors_headers())
 
+        print(f"[Telegram Bridge] Downloading msg_id {msg_id} from Telegram MTProto cloud...", flush=True)
         buffer = io.BytesIO()
         await client.download_media(message, file=buffer)
         buffer.seek(0)
+        downloaded_bytes = buffer.read()
+
+        # Cache on disk so subsequent requests are instant
+        try:
+            os.makedirs("server/cache", exist_ok=True)
+            with open(cache_file, "wb") as f:
+                f.write(downloaded_bytes)
+            print(f"[Telegram Bridge] Cached msg_id {msg_id} ({len(downloaded_bytes)} bytes) to local disk", flush=True)
+        except Exception:
+            pass
 
         return web.Response(
-            body=buffer.read(),
+            body=downloaded_bytes,
             content_type="application/octet-stream",
             headers=get_cors_headers(),
         )
