@@ -4,6 +4,7 @@ import re
 import io
 import json
 import asyncio
+import urllib.parse
 
 # Ensure UTF-8 output on Windows console so emojis in user names never cause UnicodeEncodeError
 if sys.platform == "win32":
